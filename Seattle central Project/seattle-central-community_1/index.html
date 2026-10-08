@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#00CFAE">
+<meta name="description" content="Anonymous student community for Seattle Central College: boards, transfer stories, and professor reviews. Unofficial and student-run.">
+<title>Seattle Central Community</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-page="home">
+<div class="app" id="appRoot" hidden>
+
+  <header class="topbar">
+    <div class="brand"><div class="mark" aria-hidden="true">S</div>Seattle Central</div>
+    <div class="topbar-icons">
+      <button class="icon-btn" id="searchBtn" type="button" aria-label="Search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      </button>
+      <button class="icon-btn" id="alertsBtn" type="button" aria-label="Notifications">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="dot" id="alertDot" hidden></span>
+      </button>
+    </div>
+  </header>
+
+  <p class="school-bar" id="schoolBar">Seattle Central College · unofficial student space</p>
+
+  <nav class="desktop-nav" aria-label="Main">
+    <button class="dn-item active" type="button" data-page="home"><span class="ic" aria-hidden="true">⌂</span>Home</button>
+    <button class="dn-item" type="button" data-page="board"><span class="ic" aria-hidden="true">▤</span>Boards</button>
+    <button class="dn-item" type="button" data-page="stories"><span class="ic" aria-hidden="true">⇄</span>Transfer Stories</button>
+    <button class="dn-item" type="button" data-page="professors"><span class="ic" aria-hidden="true">✎</span>Professor Reviews</button>
+    <button class="dn-item" type="button" data-page="my"><span class="ic" aria-hidden="true">◔</span>My Page</button>
+    <div class="dn-divider"></div>
+    <div class="dn-schools">
+      <h4>School</h4>
+      <div class="school-chip active">Seattle Central College</div>
+    </div>
+  </nav>
+
+  <main id="main">
+    <section class="page active" id="page-home"></section>
+    <section class="page" id="page-board"></section>
+    <section class="page" id="page-stories"></section>
+    <section class="page" id="page-professors"></section>
+    <section class="page" id="page-my"></section>
+    <section class="page" id="page-post">
+      <div class="post-detail-head">
+        <button class="back-btn" id="postBackBtn" type="button">Back</button>
+      </div>
+      <div id="postDetailContent"></div>
+    </section>
+    <section class="page" id="page-timer"></section>
+    <section class="page" id="page-schedule"></section>
+    <section class="page" id="page-search">
+      <div class="section-head" style="padding-top:16px;"><h2>Search</h2></div>
+      <div class="search-box">
+        <label class="sr-only" for="searchInput">Search posts, stories, and reviews</label>
+        <input id="searchInput" type="search" placeholder="Search posts, stories, reviews…">
+      </div>
+      <div id="searchResults"></div>
+    </section>
+    <section class="page" id="page-alerts">
+      <div class="section-head" style="padding-top:16px;"><h2>Notifications</h2></div>
+      <div id="alertsList"></div>
+    </section>
+  </main>
+
+  <aside class="desktop-aside">
+    <div class="aside-card aside-cta">
+      <h4>Share your transfer story</h4>
+      <p>Help future transfers by sharing your GPA, route, and what worked for your application.</p>
+      <button class="btn btn-primary" id="asideShareBtn" type="button" style="background:var(--mint);">Write a story</button>
+    </div>
+    <div class="aside-card">
+      <h4>Recent Transfer Stories</h4>
+      <div id="asideStories"></div>
+    </div>
+    <div class="aside-card">
+      <h4>Community guidelines</h4>
+      <p class="aside-copy">Anonymous does not mean consequence-free. Be kind, no harassment, and report anything that feels unsafe.</p>
+      <a class="aside-link" href="guidelines.html">Read the guidelines</a>
+    </div>
+  </aside>
+
+  <button class="fab" id="fab" type="button"><span class="fab-plus" aria-hidden="true">+</span><span id="fabLabel">Write a post</span></button>
+
+  <nav class="bottomnav" aria-label="Primary">
+    <button class="navbtn active" type="button" data-page="home"><span class="ic" aria-hidden="true">⌂</span>Home</button>
+    <button class="navbtn" type="button" data-page="board"><span class="ic" aria-hidden="true">▤</span>Boards</button>
+    <button class="navbtn" type="button" data-page="stories"><span class="ic" aria-hidden="true">⇄</span>Transfers</button>
+    <button class="navbtn" type="button" data-page="professors"><span class="ic" aria-hidden="true">✎</span>Profs</button>
+    <button class="navbtn" type="button" data-page="my"><span class="ic" aria-hidden="true">◔</span>My</button>
+  </nav>
+</div>
+
+<div class="gate" id="onboardGate" hidden>
+  <div class="gate-card">
+    <div class="brand gate-brand"><div class="mark">S</div>Seattle Central</div>
+    <div id="onboardSlides"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" type="button" id="onboardSkip">Skip</button>
+      <button class="btn btn-primary" type="button" id="onboardNext">Next</button>
+    </div>
+  </div>
+</div>
+
+<div class="gate" id="authGate" hidden>
+  <div class="gate-card">
+    <div class="brand gate-brand"><div class="mark">S</div>Seattle Central</div>
+    <div class="auth-tabs" role="tablist">
+      <button type="button" class="auth-tab on" id="tabLogin" role="tab">Log in</button>
+      <button type="button" class="auth-tab" id="tabSignup" role="tab">Sign up</button>
+    </div>
+    <p class="gate-lede" id="authLede">Welcome back. Log in with your email.</p>
+    <p class="mode-banner" id="modeBanner"></p>
+    <label for="authEmail">Email</label>
+    <input id="authEmail" type="email" autocomplete="username" placeholder="you@example.com">
+    <div id="nickRow" hidden>
+      <label for="authNickname">Nickname (shown on comments)</label>
+      <input id="authNickname" type="text" maxlength="24" placeholder="e.g. Broadway Beaver">
+    </div>
+    <label for="authPassword">Password</label>
+    <input id="authPassword" type="password" autocomplete="current-password" placeholder="At least 8 characters">
+    <div id="confirmRow" hidden>
+      <label for="authPassword2">Confirm password</label>
+      <input id="authPassword2" type="password" autocomplete="new-password" placeholder="Type it again">
+    </div>
+    <p class="form-error" id="authError" role="alert"></p>
+    <button class="btn btn-primary" type="button" id="authSubmit">Log in</button>
+    <p class="gate-fine">By continuing you agree to the <a href="guidelines.html">community guidelines</a> and <a href="privacy.html">privacy notice</a>. Not affiliated with Seattle Central College administration.</p>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" role="dialog" aria-labelledby="modalTitle" aria-modal="true">
+    <h3 id="modalTitle">New post</h3>
+    <label for="modalBoard">Board</label>
+    <select id="modalBoard">
+      <option value="free">Free Talk</option>
+      <option value="transfer">Transfer Q&A</option>
+      <option value="courseplan">Course Plan Q&A</option>
+      <option value="info">Info</option>
+      <option value="dreams">Share Your Dream</option>
+      <option value="events">Events</option>
+      <option value="confess">Confess</option>
+    </select>
+    <label for="modalTitleInput">Title</label>
+    <input type="text" id="modalTitleInput" maxlength="120" placeholder="What’s on your mind?">
+    <label for="modalBody">Body</label>
+    <textarea id="modalBody" maxlength="4000" placeholder="Share details…"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" type="button" id="modalCancel">Cancel</button>
+      <button class="btn btn-primary" type="button" id="modalPost">Post anonymously</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="classModalOverlay">
+  <div class="modal" role="dialog" aria-labelledby="classModalTitle" aria-modal="true">
+    <h3 id="classModalTitle">Add class</h3>
+    <label for="clsCode">Course code</label>
+    <input type="text" id="clsCode" placeholder="e.g. MATH 151">
+    <label for="clsName">Course name</label>
+    <input type="text" id="clsName" placeholder="e.g. Calculus I">
+    <label for="clsRoom">Room</label>
+    <input type="text" id="clsRoom" placeholder="e.g. BE 3175">
+    <label>Days</label>
+    <div class="day-picker" id="clsDays"></div>
+    <div class="modal-2col">
+      <div><label for="clsStart">Starts</label><select id="clsStart"></select></div>
+      <div><label for="clsEnd">Ends</label><select id="clsEnd"></select></div>
+    </div>
+    <div class="modal-2col">
+      <div><label for="clsCredits">Credits</label><input type="number" id="clsCredits" min="0" max="10" value="5"></div>
+      <div><label>Color</label><div class="color-picker" id="clsColors"></div></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" type="button" id="clsCancel">Cancel</button>
+      <button class="btn btn-danger" type="button" id="clsDelete" hidden>Delete</button>
+      <button class="btn btn-primary" type="button" id="clsSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="storyModalOverlay">
+  <div class="modal" role="dialog" aria-labelledby="storyModalHeading" aria-modal="true">
+    <h3 id="storyModalHeading">New transfer story</h3>
+    <div class="modal-2col">
+      <div><label for="storyFrom">Transferred from</label><input type="text" id="storyFrom" placeholder="e.g. Seattle Central"></div>
+      <div><label for="storyTo">Transferred to</label><input type="text" id="storyTo" placeholder="e.g. University of Washington"></div>
+    </div>
+    <div class="modal-2col">
+      <div><label for="storyMajor">Major</label><input type="text" id="storyMajor" placeholder="e.g. Computer Science"></div>
+      <div><label for="storyGpa">GPA</label><input type="text" id="storyGpa" placeholder="e.g. 3.75"></div>
+    </div>
+    <label for="storyText">Your story</label>
+    <textarea id="storyText" placeholder="What helped your application? What was the hardest part?"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" type="button" id="storyModalCancel">Cancel</button>
+      <button class="btn btn-primary" type="button" id="storyModalPost">Post anonymously</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="profModalOverlay">
+  <div class="modal" role="dialog" aria-labelledby="profModalHeading" aria-modal="true">
+    <h3 id="profModalHeading">New professor review</h3>
+    <label for="profRevName">Professor name</label>
+    <input type="text" id="profRevName" placeholder="e.g. Dr. Lee">
+    <label for="profRevCourse">Course code</label>
+    <input type="text" id="profRevCourse" placeholder="e.g. BIOL 160">
+    <label for="profRevQuarter">Quarter taken</label>
+    <input type="text" id="profRevQuarter" placeholder="e.g. Fall 2025">
+    <label for="profRevRating">Rating (1–5)</label>
+    <select id="profRevRating">
+      <option value="5">5 – Excellent</option>
+      <option value="4">4 – Good</option>
+      <option value="3">3 – Average</option>
+      <option value="2">2 – Below average</option>
+      <option value="1">1 – Poor</option>
+    </select>
+    <label for="profRevText">Your experience</label>
+    <textarea id="profRevText" placeholder="What was the class or professor like?"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" type="button" id="profModalCancel">Cancel</button>
+      <button class="btn btn-primary" type="button" id="profModalPost">Post anonymously</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="reportModalOverlay">
+  <div class="modal" role="dialog" aria-labelledby="reportModalHeading" aria-modal="true">
+    <h3 id="reportModalHeading">Report</h3>
+    <p class="gate-lede">Reports are reviewed by student moderators. This hides the post from your feed immediately.</p>
+    <label for="reportReason">Why are you reporting this?</label>
+    <select id="reportReason">
+      <option value="harassment">Harassment or hate</option>
+      <option value="spam">Spam or scam</option>
+      <option value="personal">Personal information</option>
+      <option value="other">Something else</option>
+    </select>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" type="button" id="reportCancel">Cancel</button>
+      <button class="btn btn-danger" type="button" id="reportSubmit">Submit report</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="myModalOverlay">
+  <div class="modal" role="dialog" aria-labelledby="myModalTitle" aria-modal="true">
+    <h3 id="myModalTitle">Details</h3>
+    <div id="myModalBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" type="button" id="myModalClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config.js"></script>
+<script src="js/store.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
