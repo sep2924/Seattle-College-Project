@@ -768,6 +768,7 @@
   function showApp() {
     document.getElementById('onboardGate').hidden = true;
     document.getElementById('authGate').hidden = true;
+    document.getElementById('previewGate').hidden = true;
     document.getElementById('appRoot').hidden = false;
     const h = hashPage();
     goPage(h.name, h.extra);
@@ -776,6 +777,7 @@
   function showAuth() {
     document.getElementById('onboardGate').hidden = true;
     document.getElementById('authGate').hidden = false;
+    document.getElementById('previewGate').hidden = true;
     document.getElementById('appRoot').hidden = true;
     const demo = !Store.supabaseEnabled();
     document.getElementById('modeBanner').textContent = demo
@@ -783,6 +785,28 @@
       : 'Live mode: posts are shared with signed-in Seattle Central students.';
     document.getElementById('modeBanner').className = 'mode-banner ' + (demo ? 'warn' : 'ok');
   }
+
+  async function showEntry() {
+    document.getElementById('onboardGate').hidden = true;
+    document.getElementById('authGate').hidden = true;
+    document.getElementById('appRoot').hidden = true;
+    document.getElementById('previewGate').hidden = false;
+    const box = document.getElementById('previewList');
+    let items = [];
+    try { items = await Store.previewPosts(); } catch (e) { items = []; }
+    box.innerHTML = items.length ? items.map(function (p) {
+      return '<div class="preview-item"><strong>' + escapeHtml(p.title) + '</strong><span>' +
+        escapeHtml(String(p.body || '').slice(0, 90)) + (String(p.body || '').length > 90 ? '...' : '') + '</span></div>';
+    }).join('') : '<p class="preview-empty">Be one of the first to post.</p>';
+  }
+  function openAuth(mode) {
+    document.getElementById('previewGate').hidden = true;
+    showAuth();
+    setAuthMode(mode);
+  }
+  document.getElementById('previewLogin').onclick = function () { openAuth('login'); };
+  document.getElementById('previewSignup').onclick = function () { openAuth('signup'); };
+  document.getElementById('authBack').onclick = function (e) { e.preventDefault(); showEntry(); };
 
   function showOnboard() {
     document.getElementById('onboardGate').hidden = false;
@@ -800,7 +824,7 @@
       return;
     }
     if (!Store.currentUser()) {
-      showAuth();
+      showEntry();
       return;
     }
     showApp();
@@ -808,12 +832,12 @@
 
   document.getElementById('onboardSkip').onclick = function () {
     localStorage.setItem('scc_onboard_done', '1');
-    if (Store.currentUser()) showApp(); else showAuth();
+    if (Store.currentUser()) showApp(); else showEntry();
   };
   document.getElementById('onboardNext').onclick = function () {
     if (onboardStep < 2) { onboardStep++; renderOnboard(); return; }
     localStorage.setItem('scc_onboard_done', '1');
-    if (Store.currentUser()) showApp(); else showAuth();
+    if (Store.currentUser()) showApp(); else showEntry();
   };
 
   let authMode = 'login';
@@ -924,7 +948,7 @@
   function handleMy(key) {
     const user = Store.currentUser();
     if (key === 'signout') {
-      Store.signOut().then(showAuth);
+      Store.signOut().then(showEntry);
       return;
     }
     if (key === 'posts') {

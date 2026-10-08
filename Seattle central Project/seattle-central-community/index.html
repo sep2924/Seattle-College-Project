@@ -112,6 +112,20 @@
   </div>
 </div>
 
+<div class="gate" id="previewGate" hidden>
+  <div class="gate-card preview-card">
+    <div class="brand gate-brand"><div class="mark">S</div>Seattle Central</div>
+    <h1 class="gate-title">Student community for Seattle Central</h1>
+    <p class="gate-lede">Boards, transfer stories and professor reviews, written by students. Here is a small preview.</p>
+    <div id="previewList" class="preview-list"></div>
+    <p class="preview-lock">Log in to read more and write your own post.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" type="button" id="previewLogin">Log in</button>
+      <button class="btn btn-primary" type="button" id="previewSignup">Sign up</button>
+    </div>
+  </div>
+</div>
+
 <div class="gate" id="authGate" hidden>
   <div class="gate-card">
     <div class="brand gate-brand"><div class="mark">S</div>Seattle Central</div>
@@ -135,6 +149,7 @@
     </div>
     <p class="form-error" id="authError" role="alert"></p>
     <button class="btn btn-primary" type="button" id="authSubmit">Log in</button>
+    <p class="gate-fine"><a href="#" id="authBack">Back to preview</a></p>
     <p class="gate-fine">By continuing you agree to the <a href="guidelines.html">community guidelines</a> and <a href="privacy.html">privacy notice</a>. Not affiliated with Seattle Central College administration.</p>
   </div>
 </div>

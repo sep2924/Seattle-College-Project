@@ -395,6 +395,17 @@
       return true;
     },
 
+    // Public preview: a few latest posts, readable without logging in.
+    previewPosts: async function () {
+      if (this.mode === 'supabase') {
+        const { data, error } = await this.supabase.rpc('public_preview');
+        if (error) return [];
+        return data || [];
+      }
+      return this.db.posts.slice().sort(function (a, b) { return b.ts - a.ts; }).slice(0, 5)
+        .map(function (p) { return { title: p.title, body: p.body }; });
+    },
+
     listPosts: async function () {
       if (this.mode === 'supabase') {
         const { data, error } = await this.supabase.from('posts').select('*, comments(*)').order('created_at', { ascending: false });
