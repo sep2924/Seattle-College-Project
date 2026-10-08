@@ -115,17 +115,26 @@
 <div class="gate" id="authGate" hidden>
   <div class="gate-card">
     <div class="brand gate-brand"><div class="mark">S</div>Seattle Central</div>
-    <h1 class="gate-title">Join with your school email</h1>
-    <p class="gate-lede">This is an unofficial student community. Use a nickname — never your legal name. Posts are public to signed-in classmates.</p>
+    <div class="auth-tabs" role="tablist">
+      <button type="button" class="auth-tab on" id="tabLogin" role="tab">Log in</button>
+      <button type="button" class="auth-tab" id="tabSignup" role="tab">Sign up</button>
+    </div>
+    <p class="gate-lede" id="authLede">Welcome back. Log in with your email.</p>
     <p class="mode-banner" id="modeBanner"></p>
-    <label for="authEmail">School email</label>
-    <input id="authEmail" type="email" autocomplete="username" placeholder="name@seattlecolleges.edu">
-    <label for="authNickname">Nickname (shown on comments)</label>
-    <input id="authNickname" type="text" maxlength="24" placeholder="e.g. Broadway Beaver">
+    <label for="authEmail">Email</label>
+    <input id="authEmail" type="email" autocomplete="username" placeholder="you@example.com">
+    <div id="nickRow" hidden>
+      <label for="authNickname">Nickname (shown on comments)</label>
+      <input id="authNickname" type="text" maxlength="24" placeholder="e.g. Broadway Beaver">
+    </div>
     <label for="authPassword">Password</label>
-    <input id="authPassword" type="password" autocomplete="new-password" placeholder="At least 8 characters">
+    <input id="authPassword" type="password" autocomplete="current-password" placeholder="At least 8 characters">
+    <div id="confirmRow" hidden>
+      <label for="authPassword2">Confirm password</label>
+      <input id="authPassword2" type="password" autocomplete="new-password" placeholder="Type it again">
+    </div>
     <p class="form-error" id="authError" role="alert"></p>
-    <button class="btn btn-primary" type="button" id="authSubmit">Continue</button>
+    <button class="btn btn-primary" type="button" id="authSubmit">Log in</button>
     <p class="gate-fine">By continuing you agree to the <a href="guidelines.html">community guidelines</a> and <a href="privacy.html">privacy notice</a>. Not affiliated with Seattle Central College administration.</p>
   </div>
 </div>

@@ -237,7 +237,7 @@
         <button class="menu-item" type="button" data-page="timer">Study timer <span class="right">Private ›</span></button>
         <button class="menu-item" type="button" data-page="schedule">Class schedule <span class="right">Private ›</span></button>
         <button class="menu-item" type="button" data-my="notif">Notification settings <span class="right">›</span></button>
-        <button class="menu-item" type="button" data-my="verify">School email <span class="right">Verified ✓</span></button>
+        <button class="menu-item" type="button" data-my="verify">Email <span class="right">Verified ✓</span></button>
         <a class="menu-item" href="guidelines.html">Community guidelines <span class="right">›</span></a>
         <a class="menu-item" href="privacy.html">Privacy <span class="right">›</span></a>
         <button class="menu-item" type="button" data-my="about">About this app <span class="right">›</span></button>
@@ -753,7 +753,7 @@
 
   const onboardCopy = [
     { t: 'A campus feed, not a group chat', p: 'Boards, transfer stories, and professor reviews for Seattle Central students. Unofficial and student-run.' },
-    { t: 'Nickname, not legal name', p: 'Use a school email to join. Comments show your nickname. Be kind — report anything that feels unsafe.' },
+    { t: 'Nickname, not legal name', p: 'Use any email to join. Comments show your nickname. Be kind — report anything that feels unsafe.' },
     { t: 'Post where it belongs', p: 'Write posts on Boards, stories on Transfers, reviews on Profs. Your timer and schedule stay private on My Page.' }
   ];
 
@@ -816,17 +816,51 @@
     if (Store.currentUser()) showApp(); else showAuth();
   };
 
+  let authMode = 'login';
+  function setAuthMode(m) {
+    authMode = m;
+    const signup = m === 'signup';
+    document.getElementById('tabLogin').classList.toggle('on', !signup);
+    document.getElementById('tabSignup').classList.toggle('on', signup);
+    document.getElementById('nickRow').hidden = !signup;
+    document.getElementById('confirmRow').hidden = !signup;
+    document.getElementById('authSubmit').textContent = signup ? 'Create account' : 'Log in';
+    document.getElementById('authLede').textContent = signup
+      ? 'Use a nickname, never your legal name. Posts are public to signed-in classmates.'
+      : 'Welcome back. Log in with your email.';
+    document.getElementById('authPassword').autocomplete = signup ? 'new-password' : 'current-password';
+    document.getElementById('authError').textContent = '';
+  }
+  document.getElementById('tabLogin').onclick = function () { setAuthMode('login'); };
+  document.getElementById('tabSignup').onclick = function () { setAuthMode('signup'); };
+
   document.getElementById('authSubmit').onclick = async function () {
     const email = document.getElementById('authEmail').value;
     const nickname = document.getElementById('authNickname').value;
     const password = document.getElementById('authPassword').value;
     const err = document.getElementById('authError');
+    const btn = document.getElementById('authSubmit');
     err.textContent = '';
+    if (authMode === 'signup' && password !== document.getElementById('authPassword2').value) {
+      err.textContent = 'The two passwords do not match.';
+      return;
+    }
+    btn.disabled = true;
     let result;
-    if (Store.supabaseEnabled()) result = await Store.signInSupabase(email, nickname, password);
-    else result = Store.signInLocal(email, nickname, password);
+    try {
+      result = authMode === 'signup'
+        ? await Store.signUp(email, nickname, password)
+        : await Store.logIn(email, password);
+    } catch (e) {
+      result = { ok: false, error: 'Something went wrong. Please try again.' };
+    }
+    btn.disabled = false;
     if (!result.ok) { err.textContent = result.error; return; }
-    if (result.confirmEmail) { err.textContent = 'Check your school email to confirm, then sign in again.'; return; }
+    if (result.confirmEmail) {
+      setAuthMode('login');
+      err.textContent = 'Account created. Check your email to confirm, then log in.';
+      return;
+    }
     showApp();
   };
 
@@ -931,7 +965,7 @@
         <button class="menu-item" type="button" data-notif="notifyComments">Comments on my posts <span class="right">${s.notifyComments ? 'On ✓' : 'Off'}</span></button>
         <button class="menu-item" type="button" data-notif="notifyReplies">Replies to my comments <span class="right">${s.notifyReplies ? 'On ✓' : 'Off'}</span></button>`);
     } else if (key === 'verify') {
-      openMyModal('School email', `<p class="aside-copy">Signed in as ${escapeHtml(user.email)}. School email is how we keep this campus-only. Your nickname is what classmates see.</p>`);
+      openMyModal('Email', `<p class="aside-copy">Signed in as ${escapeHtml(user.email)}. Your nickname is what classmates see.</p>`);
     } else if (key === 'about') {
       openMyModal('About this app', `<p class="aside-copy">Seattle Central Community is an unofficial, student-run space for anonymous (nicknamed) posts, transfer stories, and professor reviews. It is not affiliated with Seattle Central College administration.</p>`);
     }

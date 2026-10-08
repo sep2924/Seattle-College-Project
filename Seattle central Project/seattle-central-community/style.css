@@ -764,3 +764,8 @@
   .pill{ font-family: inherit; }
   .day-chip, .color-dot, .sg-block{ font-family: inherit; }
   .sg-block{ border:1px solid rgba(0,0,0,0.06); text-align:left; }
+
+.auth-tabs{ display:flex; gap:6px; background:var(--bg,#F4F6F8); padding:4px; border-radius:12px; margin-bottom:14px; }
+.auth-tab{ flex:1; border:0; background:transparent; padding:9px 0; border-radius:9px; font:inherit; font-weight:700; font-size:14px; color:var(--ink-soft); cursor:pointer; }
+.auth-tab.on{ background:#fff; color:var(--ink,#111); box-shadow:0 1px 3px rgba(0,0,0,.12); }
+#nickRow[hidden], #confirmRow[hidden]{ display:none; }

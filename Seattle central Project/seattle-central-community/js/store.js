@@ -262,8 +262,8 @@
       email = String(email || '').toLowerCase().trim();
       nickname = String(nickname || '').trim();
       password = String(password || '');
-      if (!isSchoolEmail(email)) {
-        return { ok: false, error: 'Use your Seattle Colleges email (for example name@seattlecolleges.edu).' };
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return { ok: false, error: 'Enter a valid email address.' };
       }
       if (nickname.length < 2 || nickname.length > 24) {
         return { ok: false, error: 'Pick a nickname between 2 and 24 characters. Do not use your legal name.' };
@@ -292,8 +292,8 @@
 
     signInSupabase: async function (email, nickname, password) {
       email = String(email || '').toLowerCase().trim();
-      if (!isSchoolEmail(email)) {
-        return { ok: false, error: 'Use your Seattle Colleges email (for example name@seattlecolleges.edu).' };
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return { ok: false, error: 'Enter a valid email address.' };
       }
       if (password.length < 8) return { ok: false, error: 'Password must be at least 8 characters.' };
       const { data, error } = await this.supabase.auth.signUp({
@@ -321,12 +321,71 @@
     },
 
     _profileFromSupabase: async function (user) {
-      const { data } = await this.supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
-      return {
-        userId: user.id,
-        email: user.email,
-        nickname: (data && data.nickname) || user.user_metadata.nickname || 'Anonymous Beaver'
-      };
+      let { data } = await this.supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
+      const meta = (user.user_metadata && user.user_metadata.nickname) || 'Anonymous Beaver';
+      if (!data) {
+        // First login after email confirmation: create the profile row now.
+        await this.supabase.from('profiles').upsert({ id: user.id, nickname: meta, email: user.email });
+        data = { nickname: meta };
+      }
+      return { userId: user.id, email: user.email, nickname: data.nickname || meta };
+    },
+
+    // ---------- Separate Log in / Sign up ----------
+    logIn: async function (email, password) {
+      email = String(email || '').toLowerCase().trim();
+      password = String(password || '');
+      if (!email || !password) return { ok: false, error: 'Enter your email and password.' };
+      if (this.mode === 'supabase') {
+        const r = await this.supabase.auth.signInWithPassword({ email: email, password: password });
+        if (r.error) {
+          if (/not confirmed/i.test(r.error.message)) return { ok: false, error: 'Please confirm your email first. Check your inbox.' };
+          return { ok: false, error: 'Wrong email or password.' };
+        }
+        this.session = await this._profileFromSupabase(r.data.user);
+        return { ok: true };
+      }
+      const user = this.db.users.find(function (u) { return u.email === email; });
+      if (!user) return { ok: false, error: 'No account found for that email. Please sign up.' };
+      if (user.password !== password) return { ok: false, error: 'Wrong password.' };
+      this.session = { userId: user.id, email: user.email, nickname: user.nickname };
+      this.getPrivate();
+      this._persist();
+      return { ok: true };
+    },
+
+    signUp: async function (email, nickname, password) {
+      email = String(email || '').toLowerCase().trim();
+      nickname = String(nickname || '').trim();
+      password = String(password || '');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return { ok: false, error: 'Enter a valid email address.' };
+      }
+      if (nickname.length < 2 || nickname.length > 24) {
+        return { ok: false, error: 'Pick a nickname between 2 and 24 characters. Do not use your legal name.' };
+      }
+      if (password.length < 8) return { ok: false, error: 'Password must be at least 8 characters.' };
+      if (this.mode === 'supabase') {
+        const r = await this.supabase.auth.signUp({
+          email: email, password: password, options: { data: { nickname: nickname } }
+        });
+        if (r.error) {
+          if (/already/i.test(r.error.message)) return { ok: false, error: 'That email already has an account. Please log in.' };
+          return { ok: false, error: r.error.message };
+        }
+        if (r.data.user && r.data.user.identities && r.data.user.identities.length === 0) {
+          return { ok: false, error: 'That email already has an account. Please log in.' };
+        }
+        if (r.data.session) {
+          this.session = await this._profileFromSupabase(r.data.user);
+          return { ok: true };
+        }
+        return { ok: true, confirmEmail: true };
+      }
+      if (this.db.users.find(function (u) { return u.email === email; })) {
+        return { ok: false, error: 'That email already has an account. Please log in.' };
+      }
+      return this.signInLocal(email, nickname, password);
     },
 
     _visible: function (authorId, id, kind) {
