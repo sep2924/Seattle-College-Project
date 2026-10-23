@@ -553,6 +553,7 @@
     fillProfNameList();
     document.getElementById('profRevName').value = '';
     document.getElementById('profRevCourse').value = '';
+    document.getElementById('profRevCourseName').value = '';
     document.getElementById('profRevQuarter').value = '';
     document.getElementById('profRevRating').value = '5';
     document.getElementById('profRevText').value = '';
@@ -1119,7 +1120,7 @@
     if (!prof) { document.getElementById('profRevName').focus(); return; }
     await Store.createReview({
       prof: prof,
-      course: document.getElementById('profRevCourse').value.trim() || 'Course',
+      course: (document.getElementById('profRevCourse').value.trim() || 'Course') + (document.getElementById('profRevCourseName').value.trim() ? ' · ' + document.getElementById('profRevCourseName').value.trim() : ''),
       quarter: document.getElementById('profRevQuarter').value.trim() || 'Quarter',
       rating: parseInt(document.getElementById('profRevRating').value, 10),
       text: document.getElementById('profRevText').value.trim() || '(no experience shared)'
