@@ -462,7 +462,16 @@
       if (this.mode === 'supabase') {
         const { data, error } = await this.supabase.from('posts').select('*, comments(*)').order('created_at', { ascending: false });
         if (error) return [];
-        return (data || []).map(fromSupabasePost).filter(function (p) {
+        const mineLikes = {};
+        try {
+          const lr = await this.supabase.from('post_likes').select('post_id').eq('user_id', this.session.userId);
+          (lr.data || []).forEach(function (r) { mineLikes[r.post_id] = true; });
+        } catch (e) {}
+        return (data || []).map(function (row) {
+          const p = fromSupabasePost(row);
+          p.liked = !!mineLikes[p.id];
+          return p;
+        }).filter(function (p) {
           return Store._visible(p.authorId, p.id, 'post');
         });
       }
@@ -470,7 +479,34 @@
         .filter(function (p) { return Store._visible(p.authorId, p.id, 'post'); })
         .slice()
         .sort(function (a, b) { return b.ts - a.ts; })
-        .map(normalizePost);
+        .map(function (p) {
+          const n = normalizePost(p);
+          n.liked = !!(this.session && (p.likedBy || []).indexOf(this.session.userId) >= 0);
+          return n;
+        }, this);
+    },
+
+    // One like per person per post. Tap again to undo.
+    toggleLike: async function (postId, wasLiked) {
+      const user = this.session;
+      if (!user) return { ok: false, error: 'Please log in first.' };
+      if (this.mode === 'supabase') {
+        if (wasLiked) {
+          const { error } = await this.supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', user.userId);
+          return error ? { ok: false, error: error.message } : { ok: true };
+        }
+        const { error } = await this.supabase.from('post_likes').insert({ post_id: postId, user_id: user.userId });
+        if (error && error.code !== '23505') return { ok: false, error: error.message };
+        return { ok: true };
+      }
+      const post = this.db.posts.find(function (x) { return String(x.id) === String(postId); });
+      if (!post) return { ok: false, error: 'Post not found.' };
+      post.likedBy = post.likedBy || [];
+      const i = post.likedBy.indexOf(user.userId);
+      if (i >= 0) { post.likedBy.splice(i, 1); post.likes = Math.max(0, (post.likes || 0) - 1); }
+      else { post.likedBy.push(user.userId); post.likes = (post.likes || 0) + 1; }
+      this._persist();
+      return { ok: true };
     },
 
     listStories: async function () {

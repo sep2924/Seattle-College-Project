@@ -48,12 +48,55 @@
     return item && item.isSample ? '<span class="sample-badge">Sample</span>' : '';
   }
 
+  function likeBtnHTML(p) {
+    return '<button type="button" class="like-btn' + (p.liked ? ' on' : '') + '" data-like="' + escapeHtml(p.id) + '" aria-pressed="' + (p.liked ? 'true' : 'false') + '" aria-label="Like">' + (p.liked ? '♥ ' : '♡ ') + (p.likes || 0) + '</button>';
+  }
+  function setLikeUI(id, liked, n) {
+    document.querySelectorAll('[data-like]').forEach(function (b) {
+      if (String(b.dataset.like) !== String(id)) return;
+      b.classList.toggle('on', liked);
+      b.setAttribute('aria-pressed', liked ? 'true' : 'false');
+      b.textContent = (liked ? '♥ ' : '♡ ') + n;
+    });
+  }
+  async function toggleLike(id) {
+    if (Store.guest) { showGuestPrompt(); return; }
+    const p = posts.find(function (x) { return String(x.id) === String(id); });
+    if (!p) return;
+    const was = !!p.liked, before = p.likes || 0;
+    p.liked = !was; p.likes = Math.max(0, before + (was ? -1 : 1));
+    setLikeUI(id, p.liked, p.likes);
+    const r = await Store.toggleLike(id, was);
+    if (r && r.ok === false) {
+      p.liked = was; p.likes = before; setLikeUI(id, was, before);
+      alert('Could not save your like: ' + r.error);
+    }
+  }
+  // Hot posts: most likes in the last 7 days (at least 1 like).
+  function hotPosts() {
+    const since = Date.now() - 7 * 86400000;
+    return posts.filter(function (p) { return p.ts >= since && (p.likes || 0) >= 1; })
+      .sort(function (a, b) { return (b.likes - a.likes) || (b.ts - a.ts); }).slice(0, 3);
+  }
+  function hotHTML() {
+    const list = hotPosts();
+    if (!list.length) return '';
+    const top = list[0];
+    return '<div class="hot-wrap"><div class="hot-head"><h2>Hot posts</h2><span class="hot-flame">THIS WEEK</span></div>' +
+      '<div class="hot-main hot-item" data-post-id="' + escapeHtml(top.id) + '" role="button" tabindex="0"><div class="tag">' + escapeHtml(boardNames[top.board] || top.board) + '</div>' +
+      '<h3>' + escapeHtml(top.title) + '</h3><p>' + escapeHtml((top.body || '').slice(0, 110)) + ((top.body || '').length > 110 ? '…' : '') + '</p>' +
+      '<div class="f">' + likeBtnHTML(top) + '<span>' + (top.commentCount != null ? top.commentCount : (top.comments || []).length) + ' comments</span></div></div>' +
+      list.slice(1).map(function (p, i) {
+        return '<div class="hot-row hot-item" data-post-id="' + escapeHtml(p.id) + '" role="button" tabindex="0"><span class="n">' + (i + 2) + '</span><span class="t">' + escapeHtml(p.title) + '</span><span class="l">♥ ' + (p.likes || 0) + '</span></div>';
+      }).join('') + '</div>';
+  }
+
   function postHTML(p) {
     return `<article class="post" data-post-id="${escapeHtml(p.id)}">
       <div class="post-meta"><span class="post-tag">${escapeHtml(boardNames[p.board] || p.board)}</span><span>·</span><span>Seattle Central</span><span>·</span><span>${escapeHtml(timeAgo(p.ts))}</span>${sampleBadge(p)}</div>
       <h3 class="post-title">${escapeHtml(p.title)}</h3>
       <p class="post-body">${escapeHtml(p.body)}</p>
-      <div class="post-foot"><span>♡ ${p.likes || 0}</span><span>${p.commentCount != null ? p.commentCount : (p.comments || []).length} comments</span></div>
+      <div class="post-foot">${likeBtnHTML(p)}<span>${p.commentCount != null ? p.commentCount : (p.comments || []).length} comments</span></div>
     </article>`;
   }
 
@@ -153,6 +196,7 @@
     const el = document.getElementById('page-home');
     const feed = mixedFeed().slice(0, 12);
     el.innerHTML = `
+      ${hotHTML()}
       <div class="section-head"><h2>Boards</h2><a href="#board">See all</a></div>
       <div class="board-grid">
         ${Object.keys(boardNames).map(function (k) {
@@ -1117,7 +1161,7 @@
         <div class="post-meta"><span class="post-tag">${escapeHtml(boardNames[p.board])}</span><span>·</span><span>Seattle Central</span><span>·</span><span>${escapeHtml(timeAgo(p.ts))}${p.edited ? ' · edited' : ''}</span>${sampleBadge(p)}</div>
         <h2 class="post-title">${escapeHtml(p.title)}</h2>
         <p class="post-body">${escapeHtml(p.body)}</p>
-        <div class="post-foot"><span>♡ ${p.likes || 0}</span><span>${comments.length} comments</span></div>
+        <div class="post-foot">${likeBtnHTML(p)}<span>${comments.length} comments</span></div>
         <div class="post-actions">
           ${mine ? `<button class="text-action" type="button" data-edit-post>Edit</button>
           <button class="text-action danger" type="button" data-delete-post>Delete</button>` : `<button class="text-action" type="button" data-report="post" data-id="${escapeHtml(p.id)}">Report</button>
@@ -1610,7 +1654,7 @@
   document.getElementById('guestBarLogin').onclick = function () { openAuth('login'); };
   document.getElementById('guestBarSignup').onclick = function () { openAuth('signup'); };
 
-  var GUEST_LOCKED = '.post[data-post-id], .story-save-btn, #storyComposer, #profComposer, [data-empty-action], #fab, #alertsBtn, #searchBtn, [data-page="my"], [data-page="timer"], [data-page="schedule"]';
+  var GUEST_LOCKED = '.post[data-post-id], .hot-item[data-post-id], [data-like], .story-save-btn, #storyComposer, #profComposer, [data-empty-action], #fab, #alertsBtn, #searchBtn, [data-page="my"], [data-page="timer"], [data-page="schedule"]';
   document.addEventListener('click', function (e) {
     if (!Store.guest || document.getElementById('appRoot').hidden) return;
     const auth = e.target.closest('[data-guest-auth]');
@@ -1723,6 +1767,8 @@
   };
 
   document.getElementById('main').addEventListener('click', function (e) {
+    const likeBtn = e.target.closest('[data-like]');
+    if (likeBtn) { e.stopPropagation(); toggleLike(likeBtn.dataset.like); return; }
     const cat = e.target.closest('.board-cat');
     if (cat) { activeBoard = cat.dataset.board; navTo('board', cat.dataset.board); return; }
     const go = e.target.closest('[data-go]');
@@ -1743,7 +1789,7 @@
     if (storyC) { openStoryModal(); return; }
     const profC = e.target.closest('#profComposer');
     if (profC) { openProfModal(); return; }
-    const post = e.target.closest('.post[data-post-id]');
+    const post = e.target.closest('.post[data-post-id], .hot-item[data-post-id]');
     if (post) { editingCommentIndex = null; openPost(post.dataset.postId); return; }
     const myItem = e.target.closest('#myMenuList [data-my]');
     if (myItem) { handleMy(myItem.dataset.my); return; }
