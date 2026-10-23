@@ -649,6 +649,105 @@
       return review;
     },
 
+    // ---- Course work plans (one per user) ----
+    _planFromRow: function (r) {
+      return {
+        id: r.user_id, authorId: r.user_id, major: r.major || '',
+        otherMajors: r.other_majors || [], dreamSchools: r.dream_schools || [],
+        quarters: Array.isArray(r.quarters) ? r.quarters : [],
+        ts: new Date(r.updated_at || r.created_at || Date.now()).getTime()
+      };
+    },
+
+    listPlans: async function () {
+      if (this.mode === 'supabase') {
+        if (this.guest || !this.session) return [];
+        const { data } = await this.supabase.from('course_plans').select('*').order('updated_at', { ascending: false });
+        return (data || []).map(this._planFromRow);
+      }
+      return (this.db.coursePlans || []).slice().sort(function (a, b) { return b.ts - a.ts; }).map(function (p) {
+        return JSON.parse(JSON.stringify(p));
+      });
+    },
+
+    savePlan: async function (plan) {
+      const user = this.session;
+      if (!user) return { ok: false, error: 'Please log in first.' };
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.from('course_plans').upsert({
+          user_id: user.userId, major: plan.major, other_majors: plan.otherMajors,
+          dream_schools: plan.dreamSchools, quarters: plan.quarters,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
+      this.db.coursePlans = this.db.coursePlans || [];
+      const rec = {
+        id: user.userId, authorId: user.userId, major: plan.major,
+        otherMajors: plan.otherMajors, dreamSchools: plan.dreamSchools,
+        quarters: plan.quarters, ts: now()
+      };
+      const i = this.db.coursePlans.findIndex(function (p) { return p.id === user.userId; });
+      if (i >= 0) this.db.coursePlans[i] = rec; else this.db.coursePlans.push(rec);
+      this._persist();
+      return { ok: true };
+    },
+
+    deletePlan: async function () {
+      const user = this.session;
+      if (!user) return { ok: false };
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.from('course_plans').delete().eq('user_id', user.userId);
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
+      this.db.coursePlans = (this.db.coursePlans || []).filter(function (p) { return p.id !== user.userId; });
+      this.db.planComments = (this.db.planComments || []).filter(function (c) { return c.planId !== user.userId; });
+      this._persist();
+      return { ok: true };
+    },
+
+    listPlanComments: async function (planId) {
+      if (this.mode === 'supabase') {
+        if (this.guest) return [];
+        const { data } = await this.supabase.from('plan_comments').select('*')
+          .eq('plan_user_id', planId).order('created_at', { ascending: true });
+        return (data || []).map(function (c) {
+          return { id: c.id, authorId: c.author_id, text: c.body, ts: new Date(c.created_at).getTime() };
+        });
+      }
+      return (this.db.planComments || []).filter(function (c) { return c.planId === planId; })
+        .sort(function (a, b) { return a.ts - b.ts; });
+    },
+
+    addPlanComment: async function (planId, text) {
+      const user = this.session;
+      if (!user) return { ok: false, error: 'Please log in first.' };
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.from('plan_comments').insert({
+          plan_user_id: planId, author_id: user.userId, body: text
+        });
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
+      this.db.planComments = this.db.planComments || [];
+      this.db.planComments.push({ id: uid('pc'), planId: planId, authorId: user.userId, text: text, ts: now() });
+      this._persist();
+      return { ok: true };
+    },
+
+    deletePlanComment: async function (id) {
+      const user = this.session;
+      if (!user) return { ok: false };
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.from('plan_comments').delete().eq('id', id).eq('author_id', user.userId);
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
+      this.db.planComments = (this.db.planComments || []).filter(function (c) {
+        return !(c.id === id && c.authorId === user.userId);
+      });
+      this._persist();
+      return { ok: true };
+    },
+
     toggleSaveStory: function (id) {
       const p = this.getPrivate();
       const i = p.savedStoryIds.indexOf(id);

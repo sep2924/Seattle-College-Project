@@ -137,6 +137,7 @@
     cache.posts = posts = await Store.listPosts();
     cache.stories = stories = await Store.listStories();
     cache.reviews = profReviews = await Store.listReviews();
+    try { plans = await Store.listPlans(); } catch (e) { plans = []; }
   }
 
   function mixedFeed() {
@@ -161,6 +162,7 @@
         ${Object.keys(boardNames).map(function (k) {
           return `<button class="board-cat" type="button" data-board="${k}"><span>${escapeHtml(boardNames[k])}</span></button>`;
         }).join('')}
+        <button class="board-cat" type="button" data-board="coursework"><span>Course work</span></button>
       </div>
       <div class="section-head"><h2>Campus feed</h2></div>
       <div id="homeFeed">
@@ -174,6 +176,10 @@
     const all = [{ key: 'all', label: 'All' }].concat(Object.keys(boardNames).map(function (key) {
       return { key: key, label: boardNames[key] };
     }));
+    all.splice(1, 0, { key: 'coursework', label: 'Course work' });
+    document.getElementById('fab').hidden = (activeBoard === 'coursework');
+    if (activeBoard === 'coursework' && openPlanId) { renderPlans(el); return; }
+    if (activeBoard !== 'coursework') openPlanId = null;
     const filtered = posts.filter(function (p) { return activeBoard === 'all' || p.board === activeBoard; });
     el.innerHTML = `
       <div class="filter-row" id="filterRow">
@@ -182,9 +188,325 @@
         }).join('')}
       </div>
       <div id="boardPosts">
-        ${filtered.map(postHTML).join('') || emptyHTML('Nothing here yet', 'Be the first to write in this board.', 'Write a post', 'compose')}
-      </div>${guestFoot()}`;
+        ${activeBoard === 'coursework' ? '' : (filtered.map(postHTML).join('') || emptyHTML('Nothing here yet', 'Be the first to write in this board.', 'Write a post', 'compose'))}
+      </div>${activeBoard === 'coursework' ? '' : guestFoot()}`;
+    if (activeBoard === 'coursework') renderPlans(document.getElementById('boardPosts'));
   }
+
+  // ================= Course work plans =================
+  let plans = [];
+  let openPlanId = null;
+  const CW_QUARTERS = ['Winter', 'Spring', 'Summer', 'Fall'];
+  const CW_STATUS = { done: 'Done', now: 'In progress', planned: 'Planned' };
+  const CW_SCHOOLS = ['University of Washington', 'UW Bothell', 'UW Tacoma', 'Seattle University',
+    'Seattle Pacific University', 'Washington State University', 'Western Washington University',
+    'Central Washington University', 'Eastern Washington University', 'Gonzaga University',
+    'Oregon State University', 'University of Oregon', 'UC Berkeley', 'UCLA', 'UC San Diego',
+    'Stanford University', 'Cal Poly SLO', 'Arizona State University', 'Purdue University'];
+  const GRADE_MAP = { 'A': 4, 'A-': 3.7, 'B+': 3.3, 'B': 3, 'B-': 2.7, 'C+': 2.3, 'C': 2, 'C-': 1.7, 'D+': 1.3, 'D': 1, 'F': 0 };
+
+  function termKey(t) {
+    const m = String(t || '').split(' ');
+    const qi = CW_QUARTERS.indexOf(m[0]);
+    return (parseInt(m[1], 10) || 0) * 4 + (qi < 0 ? 0 : qi);
+  }
+  function sortedQuarters(plan) {
+    return (plan.quarters || []).slice().sort(function (a, b) { return termKey(a.term) - termKey(b.term); });
+  }
+  function gradePoints(g) {
+    g = String(g == null ? '' : g).trim().toUpperCase();
+    if (!g) return null;
+    if (GRADE_MAP.hasOwnProperty(g)) return GRADE_MAP[g];
+    const n = parseFloat(g);
+    return (isFinite(n) && n >= 0 && n <= 4) ? n : null;
+  }
+  function quarterCredits(q) {
+    return (q.classes || []).reduce(function (s, c) { return s + (parseFloat(c.credits) || 0); }, 0);
+  }
+  function planStats(plan) {
+    let credits = 0, pts = 0, w = 0;
+    (plan.quarters || []).forEach(function (q) {
+      if (q.status === 'done') credits += quarterCredits(q);
+      (q.classes || []).forEach(function (c) {
+        const g = gradePoints(c.grade), cr = parseFloat(c.credits) || 0;
+        if (g !== null && cr > 0) { pts += g * cr; w += cr; }
+      });
+    });
+    return { credits: credits, gpa: w ? (pts / w).toFixed(2) : '--' };
+  }
+  function num(n) { return String(Math.round(n * 10) / 10); }
+  function chipsHTML(list, cls) {
+    return '<div class="cw-chips">' + list.map(function (x) {
+      return '<span class="cw-c ' + (cls || '') + '">' + escapeHtml(x) + '</span>';
+    }).join('') + '</div>';
+  }
+  function goalsHTML(p) {
+    return (p.otherMajors.length ? '<div class="cw-lbl">Also considering</div>' + chipsHTML(p.otherMajors) : '') +
+      (p.dreamSchools.length ? '<div class="cw-lbl">Dream schools</div>' + chipsHTML(p.dreamSchools, 's') : '');
+  }
+  function statsHTML(p) {
+    const st = planStats(p);
+    return '<div class="cw-stats"><div class="cw-stat"><b>' + num(st.credits) + '</b><span>credits done</span></div>' +
+      '<div class="cw-stat"><b>' + st.gpa + '</b><span>GPA so far</span></div></div>';
+  }
+  function planSpan(p) {
+    const qs = sortedQuarters(p);
+    if (!qs.length) return 'No quarters yet';
+    return (qs.length === 1 ? qs[0].term : qs[0].term + ' to ' + qs[qs.length - 1].term) + ' · ' + qs.length + (qs.length === 1 ? ' quarter' : ' quarters');
+  }
+  function myPlanId() { const u = Store.currentUser(); return u && !Store.guest ? u.userId : null; }
+
+  function planCardHTML(p) {
+    const now = sortedQuarters(p).filter(function (q) { return q.status === 'now'; })[0];
+    return '<div class="cw-card" data-cw="open" data-id="' + escapeHtml(p.id) + '" role="button" tabindex="0">' +
+      '<div class="cw-top"><div><p class="cw-title">' + escapeHtml(p.major || 'Untitled plan') + '</p><div class="cw-sub">' + escapeHtml(planSpan(p)) + '</div></div>' +
+      (p.id === myPlanId() ? '<span class="cw-mine">Your plan</span>' : '') + '</div>' +
+      goalsHTML(p) + statsHTML(p) +
+      '<div class="cw-live"><i></i>Updated ' + escapeHtml(timeAgo(p.ts)) + (now ? ' · ' + escapeHtml(now.term) + ' in progress' : '') + '</div></div>';
+  }
+
+  function classRowHTML(c) {
+    c = c || {};
+    return '<div class="cw-row"><button type="button" class="cw-x" data-cwm="rmrow" aria-label="Remove class">×</button>' +
+      '<div class="cw-row-grid"><input class="f-code" type="text" maxlength="14" placeholder="Course code" value="' + escapeHtml(c.code || '') + '">' +
+      '<input class="f-name" type="text" maxlength="60" placeholder="Course name" value="' + escapeHtml(c.name || '') + '"></div>' +
+      '<input class="f-prof" type="text" maxlength="60" list="profNameList" placeholder="Professor name" value="' + escapeHtml(c.prof || '') + '">' +
+      '<div class="cw-row-grid"><input class="f-cr" type="number" min="0" max="30" step="0.5" inputmode="decimal" placeholder="Credits" value="' + escapeHtml(c.credits == null ? '' : c.credits) + '">' +
+      '<input class="f-gr" type="text" maxlength="4" placeholder="Grade (4.0 or A-)" value="' + escapeHtml(c.grade || '') + '"></div></div>';
+  }
+
+  function planDetailHTML(p) {
+    const mine = p.id === myPlanId();
+    const qs = sortedQuarters(p);
+    return '<div class="cw-back"><button class="btn btn-ghost" type="button" data-cw="back">← All plans</button></div>' +
+      '<div style="padding:4px 18px 6px"><div class="cw-top"><div><p class="cw-title" style="font-size:19px">' + escapeHtml(p.major || 'Untitled plan') + '</p><div class="cw-sub">' + escapeHtml(planSpan(p)) + '</div></div>' +
+      (mine ? '<span class="cw-mine">Your plan</span>' : '') + '</div>' + goalsHTML(p) + statsHTML(p) +
+      '<div class="cw-live"><i></i>Updated ' + escapeHtml(timeAgo(p.ts)) + '</div></div>' +
+      (mine ? '<div class="cw-edit"><button class="btn btn-ghost" style="flex:1" type="button" data-cw="goals">Edit plan</button><button class="btn btn-ghost" style="flex:1" type="button" data-cw="addq">Add quarter</button></div>' : '<div style="height:12px"></div>') +
+      (qs.length ? qs.map(function (q) {
+        return '<div class="cw-q"><div class="cw-qh"><span><b>' + escapeHtml(q.term) + '</b><span class="cw-chip cw-' + escapeHtml(q.status) + '">' + escapeHtml(CW_STATUS[q.status] || 'Planned') + '</span></span>' +
+          '<span class="cw-cr">' + num(quarterCredits(q)) + ' credits' + (mine ? ' <button type="button" class="cw-edit-q" data-cw="editq" data-id="' + escapeHtml(q.id) + '">Edit</button>' : '') + '</span></div>' +
+          ((q.classes || []).length ? q.classes.map(function (c) {
+            const g = String(c.grade || '').trim();
+            return '<div class="cw-cl"><div><div class="cw-a">' + escapeHtml(c.code) + '</div>' + (c.name ? '<div class="cw-b">' + escapeHtml(c.name) + '</div>' : '') +
+              (c.prof ? '<div class="cw-p">Prof. ' + escapeHtml(c.prof) + '</div>' : '') + '</div>' +
+              '<div class="cw-r"><div class="k">' + escapeHtml(c.credits == null || c.credits === '' ? '?' : c.credits) + ' cr</div><div class="g' + (g ? '' : ' na') + '">' + (g ? escapeHtml(g) : '--') + '</div></div></div>';
+          }).join('') : '<div class="cw-cl"><div class="cw-b">No classes yet</div></div>') + '</div>';
+      }).join('') : '<div class="cw-empty">' + (mine ? 'Tap "Add quarter" to add your first quarter.' : 'No quarters yet.') + '</div>') +
+      '<div class="cw-comments"><h4>Comments</h4><div id="cwComments"></div>' +
+      '<div class="cw-cm-form"><input type="text" id="cwCmInput" maxlength="1000" placeholder="Write a comment (anonymous)"><button class="btn btn-primary" type="button" data-cw="cm-send">Send</button></div></div>';
+  }
+
+  async function loadPlanComments(planId) {
+    const box = document.getElementById('cwComments');
+    if (!box) return;
+    const list = await Store.listPlanComments(planId);
+    const me = myPlanId();
+    const order = {}; let n = 0;
+    box.innerHTML = list.length ? list.map(function (c) {
+      let label;
+      if (c.authorId === planId) label = 'Owner';
+      else { if (!order[c.authorId]) order[c.authorId] = ++n; label = 'Anonymous ' + order[c.authorId]; }
+      const own = me && c.authorId === me;
+      return '<div class="cw-cm"><div class="cw-cm-h"><b>' + escapeHtml(label) + (own ? ' (you)' : '') + '</b><span>' + escapeHtml(timeAgo(c.ts)) + '</span>' +
+        (own ? '<button type="button" class="cw-edit-q" data-cw="cm-del" data-id="' + escapeHtml(c.id) + '">Delete</button>' : '') + '</div>' +
+        '<div>' + escapeHtml(c.text) + '</div></div>';
+    }).join('') : '<div class="cw-b" style="padding:4px 0 10px">No comments yet.</div>';
+  }
+
+  function renderPlans(el) {
+    const mine = plans.find(function (p) { return p.id === myPlanId(); });
+    const open = openPlanId && plans.find(function (p) { return p.id === openPlanId; });
+    if (open) {
+      el.innerHTML = '<div id="cwWrap">' + planDetailHTML(open) + '</div>';
+      loadPlanComments(open.id);
+      return;
+    }
+    openPlanId = null;
+    el.innerHTML = '<div class="cw-intro">Share your quarter-by-quarter plan and keep it updated. Everyone can follow along.</div>' +
+      '<button class="btn btn-primary cw-btn" type="button" data-cw="share">' + (mine ? 'Open my plan' : 'Share your course work') + '</button>' +
+      (plans.length ? plans.map(planCardHTML).join('') :
+        '<div class="cw-empty">' + (Store.guest ? 'Sign up to see what other students are planning.' : 'No plans yet. Be the first to share yours.') + '</div>') +
+      guestFoot();
+  }
+
+  function cwModal(html) {
+    const o = document.createElement('div');
+    o.className = 'modal-overlay show cw-overlay';
+    o.innerHTML = '<div class="modal" role="dialog" aria-modal="true" style="max-height:92vh;overflow:auto">' + html + '</div>';
+    document.body.appendChild(o);
+    o.addEventListener('click', function (e) { if (e.target === o) o.remove(); });
+    return o;
+  }
+
+  function openGoalsModal() {
+    const existing = plans.find(function (p) { return p.id === myPlanId(); });
+    const other = existing ? existing.otherMajors.slice() : [];
+    const dream = existing ? existing.dreamSchools.slice() : [];
+    const o = cwModal(
+      '<h3>' + (existing ? 'Edit your plan' : 'Your goals') + '</h3>' +
+      '<label>Main major</label><input type="text" id="cwMajor" maxlength="60" placeholder="Example: Computer Science" value="' + escapeHtml(existing ? existing.major : '') + '">' +
+      '<label>Other majors you are considering</label><div id="cwOtherChips"></div>' +
+      '<div class="cw-addrow"><input type="text" id="cwOtherIn" maxlength="60" placeholder="Add another major"><button type="button" class="btn btn-ghost" id="cwOtherAdd">Add</button></div>' +
+      '<label>Dream schools</label><div id="cwDreamChips"></div>' +
+      '<div class="cw-addrow"><input type="text" id="cwDreamIn" maxlength="60" list="cwSchoolList" placeholder="Add a school"><button type="button" class="btn btn-ghost" id="cwDreamAdd">Add</button></div>' +
+      '<datalist id="cwSchoolList">' + CW_SCHOOLS.map(function (s) { return '<option value="' + escapeHtml(s) + '"></option>'; }).join('') + '</datalist>' +
+      '<div class="modal-actions" style="margin-top:14px"><button class="btn btn-ghost" type="button" id="cwCancel">Cancel</button><button class="btn btn-primary" type="button" id="cwSave">Save</button></div>' +
+      (existing ? '<button type="button" class="cw-danger" id="cwDelPlan">Delete my whole plan</button>' : ''));
+    function chips(id, arr) {
+      o.querySelector(id).innerHTML = arr.length ? '<div class="cw-chips" style="margin-bottom:8px">' + arr.map(function (x, i) {
+        return '<span class="cw-c ' + (arr === dream ? 's' : '') + '">' + escapeHtml(x) + ' <button type="button" class="cw-cx" data-i="' + i + '" aria-label="Remove">×</button></span>';
+      }).join('') + '</div>' : '';
+    }
+    function paint() { chips('#cwOtherChips', other); chips('#cwDreamChips', dream); }
+    function addTo(arr, inputId) {
+      const inp = o.querySelector(inputId); const v = inp.value.trim();
+      if (v && arr.length < 12 && !arr.some(function (x) { return x.toLowerCase() === v.toLowerCase(); })) arr.push(v);
+      inp.value = ''; paint();
+    }
+    paint();
+    o.querySelector('#cwOtherAdd').onclick = function () { addTo(other, '#cwOtherIn'); };
+    o.querySelector('#cwDreamAdd').onclick = function () { addTo(dream, '#cwDreamIn'); };
+    o.querySelector('#cwOtherIn').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); addTo(other, '#cwOtherIn'); } };
+    o.querySelector('#cwDreamIn').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); addTo(dream, '#cwDreamIn'); } };
+    o.addEventListener('click', function (e) {
+      const x = e.target.closest('.cw-cx');
+      if (!x) return;
+      const arr = x.closest('#cwDreamChips') ? dream : other;
+      arr.splice(parseInt(x.dataset.i, 10), 1); paint();
+    });
+    o.querySelector('#cwCancel').onclick = function () { o.remove(); };
+    o.querySelector('#cwSave').onclick = async function () {
+      addTo(other, '#cwOtherIn'); addTo(dream, '#cwDreamIn');
+      const major = o.querySelector('#cwMajor').value.trim();
+      if (!major) { alert('Please write your main major.'); return; }
+      const r = await Store.savePlan({ major: major, otherMajors: other, dreamSchools: dream, quarters: existing ? existing.quarters : [] });
+      if (r && r.ok === false) { alert('Could not save: ' + r.error); return; }
+      o.remove(); openPlanId = myPlanId(); await refreshCache(); renderBoard();
+    };
+    const del = o.querySelector('#cwDelPlan');
+    if (del) del.onclick = async function () {
+      if (!window.confirm('Delete your whole plan? This cannot be undone.')) return;
+      const r = await Store.deletePlan();
+      if (r && r.ok === false) { alert('Could not delete: ' + r.error); return; }
+      o.remove(); openPlanId = null; await refreshCache(); renderBoard();
+    };
+  }
+
+  function openQuarterModal(qid) {
+    const plan = plans.find(function (p) { return p.id === myPlanId(); });
+    if (!plan) return;
+    const existing = qid ? plan.quarters.find(function (q) { return q.id === qid; }) : null;
+    const yearNow = new Date().getFullYear();
+    let qName, year, status = existing ? existing.status : 'planned';
+    if (existing) { const m = existing.term.split(' '); qName = m[0]; year = parseInt(m[1], 10); }
+    else {
+      const last = sortedQuarters(plan).pop();
+      if (last) {
+        const m = last.term.split(' '); let i = CW_QUARTERS.indexOf(m[0]) + 1; year = parseInt(m[1], 10);
+        if (i > 3) { i = 0; year += 1; } qName = CW_QUARTERS[i];
+      } else {
+        const mo = new Date().getMonth();
+        qName = mo <= 2 ? 'Winter' : mo <= 5 ? 'Spring' : mo <= 7 ? 'Summer' : 'Fall'; year = yearNow; status = 'now';
+      }
+    }
+    let yOpts = '';
+    for (let y = 2020; y <= Math.max(yearNow + 4, year); y++) yOpts += '<option value="' + y + '"' + (y === year ? ' selected' : '') + '>' + y + '</option>';
+    fillProfNameList();
+    const o = cwModal(
+      '<h3>' + (existing ? 'Edit quarter' : 'Add quarter') + '</h3>' +
+      '<label>Quarter</label><div class="q-pills" id="cwQPills">' + CW_QUARTERS.map(function (n) {
+        return '<button type="button" class="q-pill' + (n === qName ? ' on' : '') + '" data-q="' + n + '">' + n + '</button>'; }).join('') + '</div>' +
+      '<label>Year</label><select id="cwYear">' + yOpts + '</select>' +
+      '<label>Status</label><div class="q-pills cw-three" id="cwSPills">' + Object.keys(CW_STATUS).map(function (k) {
+        return '<button type="button" class="q-pill' + (k === status ? ' on' : '') + '" data-s="' + k + '">' + CW_STATUS[k] + '</button>'; }).join('') + '</div>' +
+      '<label>Classes</label><div id="cwRows">' + ((existing && existing.classes.length) ? existing.classes.map(classRowHTML).join('') : classRowHTML()) + '</div>' +
+      '<button type="button" class="btn btn-ghost" id="cwAddRow" style="width:100%;margin-top:8px">+ Add class</button>' +
+      '<div class="modal-actions" style="margin-top:14px"><button class="btn btn-ghost" type="button" id="cwCancel">Cancel</button><button class="btn btn-primary" type="button" id="cwSaveQ">Save quarter</button></div>' +
+      (existing ? '<button type="button" class="cw-danger" id="cwDelQ">Delete this quarter</button>' : ''));
+    o.querySelector('#cwQPills').onclick = function (e) {
+      const b = e.target.closest('.q-pill'); if (!b) return; qName = b.dataset.q;
+      o.querySelectorAll('#cwQPills .q-pill').forEach(function (x) { x.classList.toggle('on', x === b); });
+    };
+    o.querySelector('#cwSPills').onclick = function (e) {
+      const b = e.target.closest('.q-pill'); if (!b) return; status = b.dataset.s;
+      o.querySelectorAll('#cwSPills .q-pill').forEach(function (x) { x.classList.toggle('on', x === b); });
+    };
+    o.querySelector('#cwAddRow').onclick = function () {
+      o.querySelector('#cwRows').insertAdjacentHTML('beforeend', classRowHTML());
+      const rows = o.querySelectorAll('.cw-row'); rows[rows.length - 1].querySelector('.f-code').focus();
+    };
+    o.addEventListener('click', function (e) {
+      const x = e.target.closest('[data-cwm="rmrow"]');
+      if (x) x.closest('.cw-row').remove();
+    });
+    o.querySelector('#cwCancel').onclick = function () { o.remove(); };
+    o.querySelector('#cwSaveQ').onclick = async function () {
+      const y = o.querySelector('#cwYear').value;
+      const term = qName + ' ' + y;
+      if (plan.quarters.some(function (q) { return q.term === term && (!existing || q.id !== existing.id); })) {
+        alert('You already have ' + term + '. Please edit that quarter instead.'); return;
+      }
+      const classes = [];
+      let bad = '';
+      o.querySelectorAll('.cw-row').forEach(function (r) {
+        const code = r.querySelector('.f-code').value.trim();
+        const name = r.querySelector('.f-name').value.trim();
+        const prof = r.querySelector('.f-prof').value.trim();
+        const crRaw = r.querySelector('.f-cr').value.trim();
+        const grade = r.querySelector('.f-gr').value.trim();
+        if (!code && !name && !prof && !crRaw && !grade) return;
+        if (!code) { bad = 'Each class needs a course code.'; return; }
+        if (grade && gradePoints(grade) === null) { bad = 'Grade for ' + code + ': use a number from 0 to 4 (like 3.6) or a letter (like A-).'; return; }
+        const cr = parseFloat(crRaw);
+        classes.push({ code: code, name: name, prof: canonicalProfName(prof), credits: isFinite(cr) ? Math.min(30, Math.max(0, cr)) : 0, grade: grade });
+      });
+      if (bad) { alert(bad); return; }
+      const q = { id: existing ? existing.id : 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), term: term, status: status, classes: classes };
+      const quarters = plan.quarters.filter(function (x) { return !existing || x.id !== existing.id; }).concat([q]);
+      const r = await Store.savePlan({ major: plan.major, otherMajors: plan.otherMajors, dreamSchools: plan.dreamSchools, quarters: quarters });
+      if (r && r.ok === false) { alert('Could not save: ' + r.error); return; }
+      o.remove(); await refreshCache(); renderBoard();
+    };
+    const dq = o.querySelector('#cwDelQ');
+    if (dq) dq.onclick = async function () {
+      if (!window.confirm('Delete ' + existing.term + '?')) return;
+      const quarters = plan.quarters.filter(function (x) { return x.id !== existing.id; });
+      const r = await Store.savePlan({ major: plan.major, otherMajors: plan.otherMajors, dreamSchools: plan.dreamSchools, quarters: quarters });
+      if (r && r.ok === false) { alert('Could not delete: ' + r.error); return; }
+      o.remove(); await refreshCache(); renderBoard();
+    };
+  }
+
+  document.getElementById('page-board').addEventListener('click', async function (e) {
+    const t = e.target.closest('[data-cw]');
+    if (!t) return;
+    const a = t.dataset.cw;
+    if (Store.guest) { showGuestPrompt(); return; }
+    if (a === 'share') {
+      if (plans.some(function (p) { return p.id === myPlanId(); })) { openPlanId = myPlanId(); renderBoard(); window.scrollTo(0, 0); }
+      else openGoalsModal();
+    } else if (a === 'open') { openPlanId = t.dataset.id; renderBoard(); window.scrollTo(0, 0); }
+    else if (a === 'back') { openPlanId = null; renderBoard(); }
+    else if (a === 'goals') openGoalsModal();
+    else if (a === 'addq') openQuarterModal();
+    else if (a === 'editq') openQuarterModal(t.dataset.id);
+    else if (a === 'cm-send') {
+      const inp = document.getElementById('cwCmInput');
+      const text = inp.value.trim();
+      if (!text) return;
+      const r = await Store.addPlanComment(openPlanId, text);
+      if (r && r.ok === false) { alert('Could not send: ' + r.error); return; }
+      inp.value = ''; loadPlanComments(openPlanId);
+    } else if (a === 'cm-del') {
+      await Store.deletePlanComment(t.dataset.id); loadPlanComments(openPlanId);
+    }
+  });
+  document.getElementById('page-board').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.id === 'cwCmInput') {
+      const b = document.querySelector('[data-cw="cm-send"]'); if (b) b.click();
+    }
+  });
 
   function renderStories() {
     document.getElementById('page-stories').innerHTML = `
@@ -1035,7 +1357,7 @@
       return;
     }
     const pill = e.target.closest('[data-board-filter]');
-    if (pill) { activeBoard = pill.dataset.boardFilter; renderBoard(); return; }
+    if (pill) { activeBoard = pill.dataset.boardFilter; openPlanId = null; renderBoard(); return; }
     const save = e.target.closest('.story-save-btn');
     if (save) { Store.toggleSaveStory(save.dataset.storyId); renderStories(); return; }
     const storyC = e.target.closest('#storyComposer');
