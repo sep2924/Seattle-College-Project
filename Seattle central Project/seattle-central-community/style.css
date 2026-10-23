@@ -784,3 +784,23 @@
 .guest-foot{ margin:16px 14px 90px; padding:18px; border:1px dashed var(--line); border-radius:14px; text-align:center; }
 .guest-foot p{ font-size:14px; font-weight:700; color:var(--ink-soft); margin:0 0 12px; }
 .guest-foot-btns{ display:flex; gap:8px; justify-content:center; }
+
+.shot{ position:fixed; inset:0; z-index:300; background:#fff; padding:max(env(safe-area-inset-top),14px) 12px 14px; overflow:auto; font-family:var(--font-body); color:var(--ink); }
+.shot[hidden]{ display:none; }
+.shot-title{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; padding:4px 4px 10px; }
+.shot-title h2{ font-family:var(--font-display); font-size:20px; letter-spacing:-0.03em; margin:0; }
+.shot-title span{ font-size:12.5px; font-weight:700; color:var(--ink-soft); }
+.shot-grid{ border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+.shot-head{ display:grid; grid-template-columns:34px repeat(5, minmax(0,1fr)); background:var(--bg); border-bottom:1px solid var(--line); }
+.shot-head div{ padding:8px 0; text-align:center; font-size:12px; font-weight:700; color:var(--ink-soft); }
+.shot-body{ display:grid; grid-template-columns:34px repeat(5, minmax(0,1fr)); }
+.shot-times div{ height:var(--sr); font-size:9.5px; font-weight:600; color:var(--ink-soft); text-align:center; padding-top:2px; border-top:1px solid var(--line); }
+.shot-times div:first-child{ border-top:none; }
+.shot-col{ position:relative; border-left:1px solid var(--line); }
+.shot-col i{ display:block; height:var(--sr); border-top:1px solid var(--line); }
+.shot-col i:first-child{ border-top:none; }
+.shot-block{ position:absolute; left:2px; right:2px; border-radius:7px; padding:3px 4px; overflow:hidden; line-height:1.2; }
+.shot-block b{ display:block; font-size:10.5px; font-weight:800; }
+.shot-block span{ display:block; font-size:9px; font-weight:600; opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.shot-hint{ margin-top:12px; text-align:center; font-size:12.5px; color:var(--ink-soft); animation: shotfade .6s ease 3s forwards; }
+@keyframes shotfade{ to{ opacity:0; } }

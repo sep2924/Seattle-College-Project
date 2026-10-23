@@ -281,6 +281,7 @@
       <div class="sched-toolbar">
         <span class="sched-credits" id="schedCredits">0 credits</span>
         <span class="qtr-pos" id="qtrPos"></span>
+        <button class="btn btn-ghost sched-add-btn" id="schedShotBtn" type="button">Screenshot</button>
         <button class="btn btn-primary sched-add-btn" id="schedAddBtn" type="button">Add class</button>
       </div>
       <div class="sched-grid-wrap"><div class="sched-grid" id="schedGrid"></div></div>
@@ -767,10 +768,53 @@
     document.getElementById('classModalOverlay').classList.add('show');
   }
 
+  function shotTime(a, b) {
+    const sa = hourLabel(a), sb = hourLabel(b);
+    const same = sa.slice(-2) === sb.slice(-2);
+    return (same ? sa.slice(0, -2) : sa.replace(/m$/, '')) + '-' + sb.replace(/m$/, '');
+  }
+  function openShotMode() {
+    const q = activeQuarter();
+    const box = document.getElementById('shotMode');
+    let first = 8, last = 17;
+    if (q.classes.length) {
+      first = Math.floor(Math.min.apply(null, q.classes.map(function (c) { return c.start; })));
+      last = Math.ceil(Math.max.apply(null, q.classes.map(function (c) { return c.end; })));
+      if (last - first < 4) last = first + 4;
+    }
+    const rows = last - first;
+    const rowH = Math.max(36, Math.min(90, Math.floor((window.innerHeight - 190) / rows)));
+    const credits = q.classes.reduce(function (sum, c) { return sum + (c.credits || 0); }, 0);
+    let grid = '<div class="shot-head"><div></div>' + SCHED_DAYS.map(function (d) { return '<div>' + d + '</div>'; }).join('') + '</div>';
+    grid += '<div class="shot-body" style="--sr:' + rowH + 'px">';
+    grid += '<div class="shot-times">' + Array.from({ length: rows }, function (_, r) { return '<div>' + hourLabel(first + r) + '</div>'; }).join('') + '</div>';
+    for (let day = 0; day < 5; day++) {
+      grid += '<div class="shot-col">' + Array.from({ length: rows }, function () { return '<i></i>'; }).join('');
+      q.classes.filter(function (c) { return c.days.indexOf(day) >= 0; }).forEach(function (c) {
+        const col = CLASS_COLORS[c.color % CLASS_COLORS.length];
+        const top = (c.start - first) * rowH;
+        const height = Math.max(26, (c.end - c.start) * rowH - 3);
+        grid += '<div class="shot-block" style="top:' + top + 'px;height:' + height + 'px;background:' + col.bg + ';color:' + col.text + ';">' +
+          '<b>' + escapeHtml(c.code) + '</b>' +
+          (c.name ? '<span>' + escapeHtml(c.name) + '</span>' : '') +
+          (c.room ? '<span>' + escapeHtml(c.room) + '</span>' : '') +
+          '<span>' + shotTime(c.start, c.end) + '</span></div>';
+      });
+      grid += '</div>';
+    }
+    grid += '</div>';
+    box.innerHTML = '<div class="shot-title"><h2>' + escapeHtml(q.name) + '</h2><span>' + credits + ' credits</span></div>' +
+      '<div class="shot-grid">' + grid + '</div>' +
+      '<div class="shot-hint">Take your screenshot now. Tap anywhere to close.</div>';
+    box.hidden = false;
+  }
+  document.getElementById('shotMode').addEventListener('click', function () { this.hidden = true; });
+
   function bindSchedule() {
     document.getElementById('qtrPrevBtn').onclick = function () { goQuarter(-1); };
     document.getElementById('qtrNextBtn').onclick = function () { goQuarter(1); };
     document.getElementById('schedAddBtn').onclick = function () { openClassModal(); };
+    document.getElementById('schedShotBtn').onclick = openShotMode;
     document.getElementById('schedSemester').onchange = function (e) {
       activeQuarter().name = e.target.value.trim() || 'My quarter';
       saveAccount(); renderSchedule();
