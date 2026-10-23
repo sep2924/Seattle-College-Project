@@ -562,6 +562,16 @@
       const nk = topKey(e.names);
       e.name = nk ? e.names[nk].name : '';
     });
+    // Official class list (js/courses.js): its code and name win, and classes with no reviews yet are listed too.
+    const cat = window.SCC_COURSES || {};
+    Object.keys(cat).forEach(function (sj) {
+      (cat[sj] || []).forEach(function (c) {
+        const k = codeKey(c[0]);
+        if (!k) return;
+        const e = m[k] = m[k] || { key: k, codes: {}, names: {}, reviews: [] };
+        e.code = c[0]; e.name = c[1] || e.name || '';
+      });
+    });
     return m;
   }
   function fillCourseList() {
@@ -628,12 +638,12 @@
       return Object.keys(idx).map(function (k) { return idx[k]; })
         .filter(function (e) { return subjOf(e.code) === psSubj; })
         .sort(function (a, b) { return a.key.localeCompare(b.key); })
-        .map(function (e) { return { key: e.key, label: e.code + (e.name ? ' · ' + e.name : '') + ' · ' + plural(e.reviews.length, 'review') }; });
+        .map(function (e) { return { key: e.key, label: e.code + (e.name ? ' · ' + e.name : '') + ' · ' + (e.reviews.length ? plural(e.reviews.length, 'review') : 'no reviews yet') }; });
     }
     return Object.keys(idx).map(function (k) { return idx[k]; })
       .filter(function (e) { return (qk && e.key.indexOf(qk) >= 0) || (e.name && e.name.toLowerCase().indexOf(q) >= 0) || subjName(subjOf(e.code)).toLowerCase().indexOf(q) >= 0; })
       .sort(function (a, b) { return b.reviews.length - a.reviews.length; }).slice(0, 6)
-      .map(function (e) { return { key: e.key, label: e.code + (e.name ? ' · ' + e.name : '') + ' · ' + plural(e.reviews.length, 'review') }; });
+      .map(function (e) { return { key: e.key, label: e.code + (e.name ? ' · ' + e.name : '') + ' · ' + (e.reviews.length ? plural(e.reviews.length, 'review') : 'no reviews yet') }; });
   }
   function psResultsHTML() {
     if (psMode === 'prof') {
@@ -656,6 +666,10 @@
     });
     const rows = Object.keys(byProf).map(function (k) { return byProf[k]; })
       .sort(function (a, b) { return avgOf(b.reviews) - avgOf(a.reviews) || b.reviews.length - a.reviews.length; });
+    if (!rows.length) {
+      return '<div class="ps-head"><b>' + escapeHtml(e.code + (e.name ? ' · ' + e.name : '')) + '</b><span>No reviews for this class yet.</span></div>' +
+        '<div class="ps-wrap"><button type="button" class="btn btn-primary" style="width:100%" data-empty-action="review">Write the first review</button></div>';
+    }
     return '<div class="ps-head"><b>' + escapeHtml(e.code + (e.name ? ' · ' + e.name : '')) + '</b><span>Professors who taught this class</span></div>' +
       '<div class="ps-lbl">Best rated first</div>' + rows.map(function (p) {
         const rs = recent(p.reviews), open = psExp[p.key + '|' + psSel], avg = avgOf(p.reviews);
@@ -676,16 +690,22 @@
     const browsing = psMode === 'class' && !psQ.trim();
     if (browsing && !psSubj) {
       const idx = courseIndex(), subs = {};
+      Object.keys(window.SCC_SUBJECTS || {}).forEach(function (sj) { subs[sj] = 0; });
       Object.keys(idx).forEach(function (k) { const sj = subjOf(idx[k].code); subs[sj] = (subs[sj] || 0) + 1; });
       const names = Object.keys(subs).sort();
       out.innerHTML = names.length ? '<div class="ps-lbl" style="margin-top:2px">Browse by subject</div><div class="ps-chips">' + names.map(function (n) {
-        return '<button type="button" class="ps-chip" data-psubj="' + escapeHtml(n) + '"><b>' + escapeHtml(n) + '</b>' + (subjName(n) && subjName(n) !== n ? ' ' + escapeHtml(subjName(n)) : '') + ' <span>' + subs[n] + '</span></button>';
+        return '<button type="button" class="ps-chip' + (subs[n] ? '' : ' empty') + '" data-psubj="' + escapeHtml(n) + '"><b>' + escapeHtml(n) + '</b>' + (subjName(n) && subjName(n) !== n ? ' ' + escapeHtml(subjName(n)) : '') + (subs[n] ? ' <span>' + subs[n] + '</span>' : '') + '</button>';
       }).join('') + '</div>' : '';
       list.hidden = false; if (comp) comp.hidden = false; return;
     }
     if (!psQ.trim() && !browsing) { out.innerHTML = ''; list.hidden = false; if (comp) comp.hidden = false; return; }
     list.hidden = true; if (comp) comp.hidden = true;
     const sug = psSuggestions();
+    if (!sug.length && browsing) {
+      out.innerHTML = '<div class="ps-lbl" style="margin-top:2px"><button type="button" class="ps-link" data-psubj="" style="margin:0">← All subjects</button> · ' + escapeHtml(psSubj) + (subjName(psSubj) ? ' · ' + escapeHtml(subjName(psSubj)) : '') + '</div>' +
+        emptyHTML('No classes listed yet', 'Be the first to review a class in this subject.', 'Write a review', 'review');
+      return;
+    }
     if (!sug.length) {
       out.innerHTML = emptyHTML('No reviews found', psMode === 'prof' ? 'Nobody has reviewed this professor yet.' : 'Nobody has reviewed this class yet.', 'Write a review', 'review');
       return;

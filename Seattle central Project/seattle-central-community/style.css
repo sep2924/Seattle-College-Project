@@ -892,3 +892,5 @@
 .ps-chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 12px;font-family:inherit;font-size:13px;font-weight:700;color:var(--ink);cursor:pointer}
 .ps-chip span{color:var(--ink-soft);font-weight:600;margin-left:2px}
 .ps-chip b{margin-right:2px}
+.ps-chip.empty{opacity:.55}
+.ps-chip.empty{opacity:.55}
