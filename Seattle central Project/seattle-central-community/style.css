@@ -912,3 +912,8 @@
 .pk-picked{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--mint);background:var(--mint-soft);color:#00785F;font-weight:700;border-radius:12px;padding:11px 12px;font-size:14px}
 .pk-picked button{border:0;background:none;color:#00785F;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit}
 #profClassFind[hidden],#profClassPicked[hidden],#profClassManual[hidden],#profClassBrowse[hidden]{display:none}
+.pk-add{display:block;width:100%;margin-top:8px;border:1.5px dashed var(--mint);border-radius:12px;padding:12px;text-align:center;font-weight:800;font-size:14px;color:#00785F;background:var(--mint-soft);cursor:pointer;font-family:inherit}
+.pk-addbtn{display:block;width:100%;margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:11px 12px;text-align:center;font-weight:700;font-size:14px;color:#00785F;background:var(--surface);cursor:pointer;font-family:inherit}
+.pk-err{margin-top:8px;font-size:13px;font-weight:700;color:#C0392B}
+.pk-note{margin-top:8px;font-size:12.5px;color:var(--ink-soft)}
+#profClassErr[hidden]{display:none}

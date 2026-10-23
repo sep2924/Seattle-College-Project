@@ -613,7 +613,8 @@
     const picked = document.getElementById('profClassPicked');
     const find = document.getElementById('profClassFind');
     if (!picked || !find) return;
-    picked.hidden = !pkPicked; find.hidden = pkPicked;
+    const adding = !document.getElementById('profClassManual').hidden;
+    picked.hidden = !pkPicked; find.hidden = pkPicked || adding;
     if (pkPicked) {
       const code = document.getElementById('profRevCourse').value, name = document.getElementById('profRevCourseName').value;
       document.getElementById('profClassPickedText').textContent = code + (name ? ' · ' + name : '');
@@ -627,7 +628,9 @@
       const hits = entries.filter(function (e) {
         return (qk && e.key.indexOf(qk) >= 0) || (e.name && e.name.toLowerCase().indexOf(q) >= 0) || subjName(subjOf(e.code)).toLowerCase().indexOf(q) >= 0;
       }).sort(function (a, b) { return (b.reviews.length - a.reviews.length) || a.key.localeCompare(b.key); });
-      html = hits.length ? pkList(hits, 'matches', 3) : '<div class="pk-none">No match. You can type it yourself below.</div>';
+      const typed = normCode(pkQ);
+      html = hits.length ? pkList(hits, 'matches', 3)
+        : '<div class="pk-none">No class found for "' + escapeHtml(pkQ.trim()) + '".</div><button type="button" class="pk-add" data-pkadd="' + escapeHtml(/\d/.test(typed) ? typed : '') + '">+ Add ' + (/\d/.test(typed) ? '"' + escapeHtml(typed) + '" as ' : '') + 'a new class</button>';
     }
     document.getElementById('profClassMatches').innerHTML = html;
     // browse by subject
@@ -638,7 +641,7 @@
       const items = entries.filter(function (e) { return subjOf(e.code) === pkSubj; }).sort(function (a, b) { return a.key.localeCompare(b.key); });
       box.innerHTML = '<div class="pk-chips"><span class="pk-chip on">' + escapeHtml(pkSubj) + (subjName(pkSubj) ? ' ' + escapeHtml(subjName(pkSubj)) : '') + '</span>' +
         '<button type="button" class="pk-chip" data-pksubj="">Change</button></div>' +
-        (items.length ? pkList(items, 'classes', 4) : '<div class="pk-none">No classes listed here yet. Type it yourself below.</div>');
+        (items.length ? pkList(items, 'classes', 4) : '<div class="pk-none">No classes listed here yet. Use "Add a new class" below.</div>');
       return;
     }
     const subs = {};
@@ -653,18 +656,51 @@
   function pkPick(key) {
     const e = courseIndex()[key];
     if (!e) return;
+    if (!e.name) { openAddClass(e.code, true); return; }
     const codeEl = document.getElementById('profRevCourse'), nameEl = document.getElementById('profRevCourseName');
     codeEl.value = e.code; nameEl.value = e.name || '';
     nameEl.readOnly = !!e.name;
     document.getElementById('profCourseHint').textContent = e.name ? 'Everyone uses this name, so reviews stay together.' : '';
     pkPicked = true;
-    if (!e.name) { document.getElementById('profClassManual').hidden = false; }
+    showClassErr('');
+    renderClassPicker();
+  }
+  function showClassErr(msg) {
+    const el = document.getElementById('profClassErr');
+    el.textContent = msg; el.hidden = !msg;
+  }
+  function openAddClass(code, lockCode) {
+    const codeEl = document.getElementById('profRevCourse'), nameEl = document.getElementById('profRevCourseName');
+    codeEl.value = normCode(code || ''); codeEl.readOnly = !!lockCode;
+    nameEl.value = ''; nameEl.readOnly = false;
+    document.getElementById('profCourseHint').textContent = '';
+    document.getElementById('profAddTitle').textContent = lockCode ? 'Add the class name' : 'Add a new class';
+    showClassErr('');
+    document.getElementById('profClassManual').hidden = false;
+    renderClassPicker();
+    (lockCode || codeEl.value ? nameEl : codeEl).focus();
+  }
+  function saveAddClass() {
+    const codeEl = document.getElementById('profRevCourse'), nameEl = document.getElementById('profRevCourseName');
+    const hint = document.getElementById('profCourseHint');
+    let code = normCode(codeEl.value);
+    let name = nameEl.value.trim().replace(/\s+/g, ' ');
+    if (!code || !/\d/.test(code)) { hint.textContent = 'Please write the course code, like ART 100.'; codeEl.focus(); return; }
+    if (!name) { hint.textContent = 'Please write the class name.'; nameEl.focus(); return; }
+    const known = courseIndex()[codeKey(code)];
+    if (known && known.name) { code = known.code; name = known.name; }
+    codeEl.value = code; nameEl.value = name; codeEl.readOnly = false; nameEl.readOnly = !!(known && known.name);
+    hint.textContent = '';
+    document.getElementById('profClassManual').hidden = true;
+    pkPicked = true; showClassErr('');
     renderClassPicker();
   }
   function resetClassPicker() {
     pkQ = ''; pkSubj = null; pkPicked = false; pkMore.matches = pkMore.subjects = pkMore.classes = false;
     document.getElementById('profClassSearch').value = '';
     document.getElementById('profClassManual').hidden = true;
+    document.getElementById('profRevCourse').readOnly = false;
+    showClassErr('');
     renderClassPicker();
   }
   (function bindClassPicker() {
@@ -682,13 +718,20 @@
       if (more) { pkMore[more.dataset.pkmore] = true; renderClassPicker(); return; }
       if (e.target.closest('#profClassChange')) {
         document.getElementById('profRevCourse').value = ''; document.getElementById('profRevCourseName').value = '';
+        document.getElementById('profRevCourse').readOnly = false;
         document.getElementById('profRevCourseName').readOnly = false; document.getElementById('profCourseHint').textContent = '';
         pkPicked = false; document.getElementById('profClassManual').hidden = true; renderClassPicker(); return;
       }
-      if (e.target.closest('#profClassManualBtn')) {
-        const m = document.getElementById('profClassManual'); m.hidden = !m.hidden;
-        if (!m.hidden) document.getElementById('profRevCourse').focus();
+      const add = e.target.closest('[data-pkadd]');
+      if (add) { openAddClass(add.dataset.pkadd, false); return; }
+      if (e.target.closest('#profClassAddBtn')) { openAddClass(pkQ.trim() && /\d/.test(normCode(pkQ)) ? pkQ : '', false); return; }
+      if (e.target.closest('#profClassAddCancel')) {
+        document.getElementById('profClassManual').hidden = true;
+        document.getElementById('profRevCourse').value = ''; document.getElementById('profRevCourseName').value = '';
+        document.getElementById('profRevCourse').readOnly = false; document.getElementById('profRevCourseName').readOnly = false;
+        pkPicked = false; renderClassPicker(); return;
       }
+      if (e.target.closest('#profClassAddSave')) saveAddClass();
     });
   })();
 
@@ -1856,6 +1899,11 @@
   document.getElementById('profModalPost').onclick = async function () {
     const prof = canonicalProfName(document.getElementById('profRevName').value);
     if (!prof) { document.getElementById('profRevName').focus(); return; }
+    if (!pkPicked) {
+      showClassErr(document.getElementById('profClassManual').hidden ? 'Please pick a class, or add a new one.' : 'Please finish adding the class first (tap "Add class").');
+      document.getElementById('profClassErr').scrollIntoView({ block: 'center' });
+      return;
+    }
     await Store.createReview({
       prof: prof,
       course: (function () {

@@ -243,14 +243,18 @@
       <input type="search" id="profClassSearch" autocomplete="off" placeholder="Search by code or name, e.g. math 151">
       <div id="profClassMatches"></div>
       <div id="profClassBrowse"><div class="pk-lbl">Or browse by subject</div><div id="profClassSubj"></div></div>
-      <button type="button" id="profClassManualBtn" class="pk-type">Not in the list? Type it yourself</button>
+      <button type="button" id="profClassAddBtn" class="pk-addbtn">+ Add a new class</button>
     </div>
+    <div id="profClassErr" class="pk-err" hidden></div>
     <div id="profClassManual" hidden>
+      <div class="pk-lbl" id="profAddTitle" style="margin-top:6px">Add a new class</div>
       <label for="profRevCourse">Course code</label>
-      <input type="text" id="profRevCourse" list="courseCodeList" autocomplete="off" placeholder="e.g. BIOL 160"><datalist id="courseCodeList"></datalist>
-      <label for="profRevCourseName">Course name</label>
-      <input type="text" id="profRevCourseName" placeholder="e.g. General Biology">
+      <input type="text" id="profRevCourse" list="courseCodeList" autocomplete="off" placeholder="e.g. ART 100"><datalist id="courseCodeList"></datalist>
+      <label for="profRevCourseName">Class name (required)</label>
+      <input type="text" id="profRevCourseName" autocomplete="off" placeholder="e.g. Art Appreciation">
       <div id="profCourseHint" class="ps-sm" style="margin-top:4px"></div>
+      <div class="pk-note">Everyone who picks this class after you will see this name. Please use the official name.</div>
+      <div class="modal-actions" style="margin-top:10px"><button class="btn btn-ghost" type="button" id="profClassAddCancel">Cancel</button><button class="btn btn-primary" type="button" id="profClassAddSave">Add class</button></div>
     </div>
     <label id="profQuarterLabel">Quarter taken</label>
     <div class="q-pills" id="profQuarterPills" role="group" aria-labelledby="profQuarterLabel">
