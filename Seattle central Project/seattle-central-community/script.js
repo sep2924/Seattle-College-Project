@@ -153,10 +153,6 @@
     const el = document.getElementById('page-home');
     const feed = mixedFeed().slice(0, 12);
     el.innerHTML = `
-      <div class="pulse">
-        <div class="pulse-label"><span class="live-dot"></span>Campus Pulse</div>
-        <div class="pulse-track" id="pulseTrack"></div>
-      </div>
       <div class="section-head"><h2>Boards</h2><a href="#board">See all</a></div>
       <div class="board-grid">
         ${Object.keys(boardNames).map(function (k) {
@@ -168,7 +164,6 @@
       <div id="homeFeed">
         ${feed.length ? feed.map(feedItemHTML).join('') : emptyHTML('Nothing in the feed yet', 'Write the first post for your classmates.', 'Write a post', 'compose')}
       </div>${guestFoot()}`;
-    showPulse();
   }
 
   function renderBoard() {
@@ -993,7 +988,6 @@
     items[pulseIndex % items.length].classList.add('show');
     pulseIndex = (pulseIndex + 1) % items.length;
   }
-  setInterval(rotatePulse, 3200);
 
   function hashPage() {
     const raw = (location.hash || '#home').replace(/^#/, '');
@@ -1393,7 +1387,7 @@
   const SCHED_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
   const SCHED_START = 8, SCHED_END = 20;
   const CLASS_COLORS = [
-    { bg: '#E3FBF6', text: '#00785F' },
+    { bg: '#E6ECF8', text: '#1E4CA2' },
     { bg: '#E8EAFF', text: '#3D4CCC' },
     { bg: '#FFF2DE', text: '#9A6210' },
     { bg: '#FFE9EC', text: '#C2354B' },
