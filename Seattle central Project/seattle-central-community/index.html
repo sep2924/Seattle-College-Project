@@ -238,9 +238,10 @@
     <input type="text" id="profRevName" list="profNameList" autocomplete="off" placeholder="Start typing a name">
     <datalist id="profNameList"></datalist>
     <label for="profRevCourse">Course code</label>
-    <input type="text" id="profRevCourse" placeholder="e.g. BIOL 160">
+    <input type="text" id="profRevCourse" list="courseCodeList" autocomplete="off" placeholder="e.g. BIOL 160"><datalist id="courseCodeList"></datalist>
     <label for="profRevCourseName">Course name</label>
     <input type="text" id="profRevCourseName" placeholder="e.g. General Biology">
+    <div id="profCourseHint" class="ps-sm" style="margin-top:4px"></div>
     <label id="profQuarterLabel">Quarter taken</label>
     <div class="q-pills" id="profQuarterPills" role="group" aria-labelledby="profQuarterLabel">
       <button type="button" class="q-pill" data-q="Winter">Winter</button>

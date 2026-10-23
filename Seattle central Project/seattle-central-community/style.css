@@ -859,3 +859,32 @@
 .cw-three{grid-template-columns:repeat(3,minmax(0,1fr))}
 .cw-danger{display:block;margin:14px auto 2px;border:0;background:none;color:#C0392B;font-weight:700;font-size:13px;cursor:pointer}
 .fab[hidden]{ display:none !important; }
+
+/* ===== Professor / class search ===== */
+.ps-wrap{padding:6px 18px 4px}
+.ps-in{display:flex;gap:8px;align-items:center;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:0 12px}
+.ps-in input{flex:1;min-width:0;border:0;background:none;outline:none;padding:11px 0;font-size:14px;font-family:inherit;color:var(--ink)}
+.ps-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0 12px}
+.ps-tab{height:38px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font-weight:700;font-size:13px;color:var(--ink-soft);cursor:pointer;font-family:var(--font-body)}
+.ps-tab.on{background:var(--mint-soft);border-color:var(--mint);color:#00785F}
+.ps-sug{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden;margin:0 18px 12px;font-size:13.5px}
+.ps-sug div{padding:10px 12px;color:var(--ink-soft);border-top:1px solid var(--line);cursor:pointer}
+.ps-sug div:first-child{border-top:0}
+.ps-sug div.on{background:var(--mint-soft);color:#00785F;font-weight:700}
+.ps-head{padding:0 18px;margin:4px 0 8px}
+.ps-head b{font-family:var(--font-display);font-size:18px;display:block}
+.ps-head span{font-size:12.5px;color:var(--ink-soft)}
+.ps-sum{margin:0 18px 12px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;justify-content:space-between;align-items:center}
+.ps-big{font-family:var(--font-display);font-size:30px;font-weight:800;letter-spacing:-.03em}
+.ps-st{color:#F5A524;font-size:13px;letter-spacing:2px}
+.ps-sm{font-size:12px;color:var(--ink-soft);font-weight:600}
+.ps-row{margin:0 18px 10px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.ps-row .t{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.ps-row h4{margin:0;font-family:var(--font-display);font-size:15px}
+.ps-row .m{font-size:12px;color:var(--ink-soft);margin-top:2px}
+.ps-sc{background:var(--mint-soft);color:#00785F;font-weight:800;border-radius:10px;padding:4px 10px;font-size:14px}
+.ps-row p{font-size:13px;color:var(--ink-soft);line-height:1.55;margin:8px 0 0}
+.ps-link{border:0;background:none;padding:0;font-family:inherit;font-size:12px;font-weight:700;color:#00785F;margin-top:8px;cursor:pointer}
+.ps-lbl{margin:14px 18px 6px;font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em}
+#profList[hidden]{display:none}
+#profComposer[hidden]{display:none}

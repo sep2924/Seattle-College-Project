@@ -521,9 +521,185 @@
       </div>${guestFoot()}`;
   }
 
+  // ================= Course names + professor / class search =================
+  function normCode(raw) {
+    const s = String(raw || '').trim().toUpperCase().replace(/\s+/g, ' ');
+    const m = s.match(/^([A-Z]{2,6})\s*(&)?\s*(\d{2,3}[A-Z]?)$/);
+    return m ? m[1] + (m[2] || '') + ' ' + m[3] : s;
+  }
+  function codeKey(c) { return String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+  function parseCourse(c) {
+    const s = String(c || '');
+    const i = s.indexOf(' · ');
+    return i < 0 ? { code: s.trim(), name: '' } : { code: s.slice(0, i).trim(), name: s.slice(i + 3).trim() };
+  }
+  function topKey(obj, pref) {
+    let best = null, bn = -1;
+    Object.keys(obj).forEach(function (k) {
+      const n = typeof obj[k] === 'number' ? obj[k] : obj[k].n;
+      if (n > bn || (n === bn && pref && pref(k) && !pref(best))) { best = k; bn = n; }
+    });
+    return best;
+  }
+  // Every course seen in reviews, grouped by code (MATH 151 and MATH& 151 are the same class).
+  function courseIndex() {
+    const m = {};
+    profReviews.forEach(function (r) {
+      const pc = parseCourse(r.course);
+      const k = codeKey(pc.code);
+      if (!k || k === 'COURSE') return;
+      const e = m[k] = m[k] || { key: k, codes: {}, names: {}, reviews: [] };
+      e.codes[pc.code] = (e.codes[pc.code] || 0) + 1;
+      if (pc.name) {
+        const nk = pc.name.toLowerCase();
+        (e.names[nk] = e.names[nk] || { name: pc.name, n: 0 }).n++;
+      }
+      e.reviews.push(r);
+    });
+    Object.keys(m).forEach(function (k) {
+      const e = m[k];
+      e.code = topKey(e.codes, function (c) { return c && c.indexOf('&') >= 0; });
+      const nk = topKey(e.names);
+      e.name = nk ? e.names[nk].name : '';
+    });
+    return m;
+  }
+  function fillCourseList() {
+    const idx = courseIndex();
+    document.getElementById('courseCodeList').innerHTML = Object.keys(idx).sort().map(function (k) {
+      const e = idx[k];
+      return '<option value="' + escapeHtml(e.code) + '" label="' + escapeHtml(e.name) + '"></option>';
+    }).join('');
+  }
+  function syncCourseName() {
+    const codeEl = document.getElementById('profRevCourse');
+    const nameEl = document.getElementById('profRevCourseName');
+    const hint = document.getElementById('profCourseHint');
+    const e = courseIndex()[codeKey(codeEl.value)];
+    if (e && e.name) {
+      nameEl.value = e.name; nameEl.readOnly = true;
+      hint.textContent = 'Everyone uses this name, so reviews stay together.';
+    } else {
+      if (nameEl.readOnly) nameEl.value = '';
+      nameEl.readOnly = false;
+      hint.textContent = '';
+    }
+  }
+  document.getElementById('profRevCourse').addEventListener('input', syncCourseName);
+  document.getElementById('profRevCourse').addEventListener('change', syncCourseName);
+
+  let psMode = 'prof', psQ = '', psSel = null;
+  const psExp = {};
+  function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
+  function avgOf(list) { return list.reduce(function (s, r) { return s + Number(r.rating || 0); }, 0) / (list.length || 1); }
+  function recent(list) {
+    return list.slice().sort(function (a, b) { return (termKey(b.quarter) - termKey(a.quarter)) || (b.ts - a.ts); });
+  }
+  function psProfs() {
+    const m = {};
+    profReviews.forEach(function (r) {
+      const n = canonicalProfName(r.prof);
+      const k = n.toLowerCase();
+      (m[k] = m[k] || { key: k, name: n, reviews: [] }).reviews.push(r);
+    });
+    return m;
+  }
+  function psReviewRow(r, showCourse) {
+    const pc = parseCourse(r.course);
+    const mine = Store.currentUser() && r.authorId === Store.currentUser().userId;
+    return '<div class="ps-row"><div class="t"><div><h4>' + escapeHtml(showCourse ? (pc.code + (pc.name ? ' · ' + pc.name : '')) : r.quarter) + '</h4>' +
+      '<div class="m">' + escapeHtml(showCourse ? r.quarter : '') + (showCourse ? ' · ' : '') + escapeHtml(timeAgo(r.ts)) + '</div></div>' +
+      '<span class="ps-sc">' + Number(r.rating).toFixed(1) + '</span></div><p>' + escapeHtml(r.text) + '</p>' +
+      ((mine || Store.guest) ? '' : '<div class="safety-row"><button class="text-action" type="button" data-report="review" data-id="' + escapeHtml(r.id) + '">Report</button></div>') + '</div>';
+  }
+  function psSuggestions() {
+    const q = psQ.trim().toLowerCase(), qk = codeKey(psQ);
+    if (psMode === 'prof') {
+      const profs = psProfs();
+      return Object.keys(profs).map(function (k) { return profs[k]; })
+        .filter(function (p) { return p.name.toLowerCase().indexOf(q) >= 0; })
+        .sort(function (a, b) { return b.reviews.length - a.reviews.length; }).slice(0, 6)
+        .map(function (p) { return { key: p.key, label: p.name + ' · ' + plural(p.reviews.length, 'review') }; });
+    }
+    const idx = courseIndex();
+    return Object.keys(idx).map(function (k) { return idx[k]; })
+      .filter(function (e) { return (qk && e.key.indexOf(qk) >= 0) || (e.name && e.name.toLowerCase().indexOf(q) >= 0); })
+      .sort(function (a, b) { return b.reviews.length - a.reviews.length; }).slice(0, 6)
+      .map(function (e) { return { key: e.key, label: e.code + (e.name ? ' · ' + e.name : '') + ' · ' + plural(e.reviews.length, 'review') }; });
+  }
+  function psResultsHTML() {
+    if (psMode === 'prof') {
+      const p = psProfs()[psSel];
+      if (!p) return '';
+      const classes = {};
+      p.reviews.forEach(function (r) { classes[codeKey(parseCourse(r.course).code)] = 1; });
+      const avg = avgOf(p.reviews);
+      return '<div class="ps-head"><b>' + escapeHtml(p.name) + '</b><span>All reviews for this professor</span></div>' +
+        '<div class="ps-sum"><div><div class="ps-big">' + avg.toFixed(1) + '</div><div class="ps-st">' + '★'.repeat(Math.round(avg)) + '</div></div>' +
+        '<div style="text-align:right"><div class="ps-sm">' + plural(p.reviews.length, 'review') + '</div><div class="ps-sm">' + plural(Object.keys(classes).length, 'class') + '</div></div></div>' +
+        recent(p.reviews).map(function (r) { return psReviewRow(r, true); }).join('');
+    }
+    const e = courseIndex()[psSel];
+    if (!e) return '';
+    const byProf = {};
+    e.reviews.forEach(function (r) {
+      const n = canonicalProfName(r.prof), k = n.toLowerCase();
+      (byProf[k] = byProf[k] || { key: k, name: n, reviews: [] }).reviews.push(r);
+    });
+    const rows = Object.keys(byProf).map(function (k) { return byProf[k]; })
+      .sort(function (a, b) { return avgOf(b.reviews) - avgOf(a.reviews) || b.reviews.length - a.reviews.length; });
+    return '<div class="ps-head"><b>' + escapeHtml(e.code + (e.name ? ' · ' + e.name : '')) + '</b><span>Professors who taught this class</span></div>' +
+      '<div class="ps-lbl">Best rated first</div>' + rows.map(function (p) {
+        const rs = recent(p.reviews), open = psExp[p.key + '|' + psSel], avg = avgOf(p.reviews);
+        return '<div class="ps-row"><div class="t"><div><h4>' + escapeHtml(p.name) + '</h4><div class="m">' + avg.toFixed(1) + ' avg · ' + plural(p.reviews.length, 'review') + ' · last taught ' + escapeHtml(rs[0].quarter) + '</div></div>' +
+          '<span class="ps-sc">' + avg.toFixed(1) + '</span></div>' +
+          (open ? rs.map(function (r) { return '<p>' + escapeHtml(r.text) + '<span class="ps-sm"> · ' + escapeHtml(r.quarter) + ' · ' + Number(r.rating).toFixed(1) + '</span></p>'; }).join('')
+                : '<p>' + escapeHtml(rs[0].text.length > 160 ? rs[0].text.slice(0, 157) + '…' : rs[0].text) + '</p>') +
+          (p.reviews.length > 1 ? '<button type="button" class="ps-link" data-pexp="' + escapeHtml(p.key) + '">' + (open ? 'Show less' : 'See all ' + p.reviews.length + ' reviews') + '</button>' : '') + '</div>';
+      }).join('');
+  }
+  function renderProfSearch() {
+    const out = document.getElementById('profSearchOut');
+    const list = document.getElementById('profList');
+    if (!out || !list) return;
+    document.querySelectorAll('#profSearchTabs .ps-tab').forEach(function (b) { b.classList.toggle('on', b.dataset.pmode === psMode); });
+    document.getElementById('profSearchIn').placeholder = psMode === 'prof' ? 'Search a professor name' : 'Search a class code or name';
+    const comp = document.getElementById('profComposer');
+    if (!psQ.trim()) { out.innerHTML = ''; list.hidden = false; if (comp) comp.hidden = false; return; }
+    list.hidden = true; if (comp) comp.hidden = true;
+    const sug = psSuggestions();
+    if (!sug.length) {
+      out.innerHTML = emptyHTML('No reviews found', psMode === 'prof' ? 'Nobody has reviewed this professor yet.' : 'Nobody has reviewed this class yet.', 'Write a review', 'review');
+      return;
+    }
+    if (psSel && !sug.some(function (s) { return s.key === psSel; })) psSel = null;
+    if (!psSel && sug.length === 1) psSel = sug[0].key;
+    out.innerHTML = '<div class="ps-sug">' + sug.map(function (s) {
+      return '<div role="button" tabindex="0" data-psel="' + escapeHtml(s.key) + '" class="' + (s.key === psSel ? 'on' : '') + '">' + escapeHtml(s.label) + '</div>';
+    }).join('') + '</div>' + (psSel ? psResultsHTML() : '');
+  }
+  (function bindProfSearch() {
+    const page = document.getElementById('page-professors');
+    page.addEventListener('input', function (e) {
+      if (e.target.id !== 'profSearchIn') return;
+      psQ = e.target.value; psSel = null; renderProfSearch();
+    });
+    page.addEventListener('click', function (e) {
+      const mode = e.target.closest('[data-pmode]');
+      if (mode) { psMode = mode.dataset.pmode; psSel = null; renderProfSearch(); return; }
+      const sel = e.target.closest('[data-psel]');
+      if (sel) { psSel = sel.dataset.psel; renderProfSearch(); return; }
+      const exp = e.target.closest('[data-pexp]');
+      if (exp) { const k = exp.dataset.pexp + '|' + psSel; psExp[k] = !psExp[k]; renderProfSearch(); }
+    });
+  })();
+
   function renderProfessors() {
     document.getElementById('page-professors').innerHTML = `
       <div class="section-head" style="padding-top:16px;"><h2>Professor Reviews</h2></div>
+      <div class="ps-wrap"><div class="ps-in"><span aria-hidden="true">🔍</span><input type="search" id="profSearchIn" autocomplete="off" value="${escapeHtml(psQ)}" aria-label="Search reviews"></div>
+        <div class="ps-tabs" id="profSearchTabs"><button type="button" class="ps-tab" data-pmode="prof">Professor</button><button type="button" class="ps-tab" data-pmode="class">Class</button></div></div>
+      <div id="profSearchOut"></div>
       <button class="composer-box" id="profComposer" type="button">
         <div class="composer-row"><div class="composer-text">Review a professor or class…</div></div>
         <div class="composer-prompts"><span>Professor name</span><span>Course code</span><span>Quarter taken</span><span>Rating (1–5)</span></div>
@@ -532,6 +708,7 @@
       <div class="prof-list" id="profList">
         ${profReviews.map(profFullHTML).join('') || emptyHTML('No reviews yet', 'Be the first to review a professor.', 'Write a review', 'review')}
       </div>${guestFoot()}`;
+    renderProfSearch();
   }
 
   function renderMyPage() {
@@ -904,6 +1081,9 @@
     document.getElementById('profRevName').value = '';
     document.getElementById('profRevCourse').value = '';
     document.getElementById('profRevCourseName').value = '';
+    document.getElementById('profRevCourseName').readOnly = false;
+    document.getElementById('profCourseHint').textContent = '';
+    fillCourseList();
     const nowD = new Date();
     const curYear = nowD.getFullYear();
     const mo = nowD.getMonth();
@@ -1540,7 +1720,14 @@
     if (!prof) { document.getElementById('profRevName').focus(); return; }
     await Store.createReview({
       prof: prof,
-      course: (document.getElementById('profRevCourse').value.trim() || 'Course') + (document.getElementById('profRevCourseName').value.trim() ? ' · ' + document.getElementById('profRevCourseName').value.trim() : ''),
+      course: (function () {
+        const typedCode = document.getElementById('profRevCourse').value;
+        const typedName = document.getElementById('profRevCourseName').value.trim().replace(/\s+/g, ' ');
+        const known = courseIndex()[codeKey(typedCode)];
+        const code = known ? known.code : (normCode(typedCode) || 'Course');
+        const name = known && known.name ? known.name : typedName;
+        return code + (name ? ' · ' + name : '');
+      })(),
       quarter: profQuarter + ' ' + document.getElementById('profRevYear').value,
       rating: parseInt(document.getElementById('profRevRating').value, 10),
       text: document.getElementById('profRevText').value.trim() || '(no experience shared)'
