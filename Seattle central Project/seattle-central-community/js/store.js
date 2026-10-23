@@ -209,6 +209,7 @@
           this.session = await this._profileFromSupabase(data.session.user);
         }
         this.privateMap = readJson(PRIVATE_KEY, {});
+        await this._pullPrivate();
         return;
       }
       this.mode = 'local';
@@ -256,7 +257,45 @@
       return this.privateMap[id];
     },
 
-    savePrivate: function () { this._persist(); },
+    savePrivate: function () {
+      this._persist();
+      this._pushPrivateSoon();
+    },
+
+    // Timer, schedule, saved stories and settings follow the account (Supabase table user_data).
+    _pullPrivate: async function () {
+      if (this.mode !== 'supabase' || !this.session) return;
+      try {
+        const id = this.session.userId;
+        const { data, error } = await this.supabase.from('user_data').select('data').eq('user_id', id).maybeSingle();
+        if (error) { this._cloudOk = false; return; }
+        this._cloudOk = true;
+        if (data && data.data && typeof data.data === 'object') {
+          this.privateMap[id] = Object.assign(defaultPrivate(), data.data);
+          writeJson(PRIVATE_KEY, this.privateMap);
+        } else {
+          this.getPrivate();
+          await this._pushPrivateNow();
+        }
+      } catch (e) { this._cloudOk = false; }
+    },
+
+    _pushPrivateSoon: function () {
+      if (this.mode !== 'supabase' || !this.session || this._cloudOk === false) return;
+      const self = this;
+      clearTimeout(this._pushT);
+      this._pushT = setTimeout(function () { self._pushPrivateNow(); }, 800);
+    },
+
+    _pushPrivateNow: async function () {
+      if (this.mode !== 'supabase' || !this.session || this._cloudOk === false) return;
+      try {
+        const id = this.session.userId;
+        await this.supabase.from('user_data').upsert({
+          user_id: id, data: this.privateMap[id] || defaultPrivate(), updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+      } catch (e) {}
+    },
 
     signInLocal: function (email, nickname, password) {
       email = String(email || '').toLowerCase().trim();
@@ -305,6 +344,7 @@
         const signed = await this.supabase.auth.signInWithPassword({ email: email, password: password });
         if (signed.error) return { ok: false, error: signed.error.message };
         this.session = await this._profileFromSupabase(signed.data.user);
+        await this._pullPrivate();
         return { ok: true };
       }
       if (error) return { ok: false, error: error.message };
@@ -343,6 +383,7 @@
           return { ok: false, error: 'Wrong email or password.' };
         }
         this.session = await this._profileFromSupabase(r.data.user);
+        await this._pullPrivate();
         return { ok: true };
       }
       const user = this.db.users.find(function (u) { return u.email === email; });

@@ -587,9 +587,14 @@
       <div class="tstats" id="timerStats"></div>
       <div class="section-head"><h2>Last 7 days</h2></div>
       <div class="tchart" id="timerChart"></div>`;
+    restoreLive();
     bindTimer();
     renderTimerStats();
     renderTimerClock();
+    if (tInterval) {
+      document.getElementById('timerStartBtn').textContent = 'Pause';
+      document.getElementById('timerClock').classList.add('running');
+    }
   }
 
   function renderSchedulePage() {
@@ -935,6 +940,21 @@
     document.getElementById('goalInput').value = account().timer.goalHours;
   }
 
+  function saveLive() {
+    const t = account().timer;
+    if (!tSession && !tInterval) delete t.live;
+    else t.live = { sec: tSession, running: !!tInterval, at: Date.now() };
+    saveAccount();
+  }
+  function restoreLive() {
+    const l = account().timer.live;
+    if (!l || tInterval || tSession) return;
+    tSession = (l.sec || 0) + (l.running ? Math.max(0, Math.floor((Date.now() - l.at) / 1000)) : 0);
+    if (l.running) {
+      tInterval = setInterval(function () { tSession++; renderTimerClock(); if (tSession % 15 === 0) saveLive(); }, 1000);
+    }
+  }
+
   function timerToggle() {
     const tStartBtn = document.getElementById('timerStartBtn');
     const tClock = document.getElementById('timerClock');
@@ -943,17 +963,18 @@
       tStartBtn.textContent = 'Start';
       tClock.classList.remove('running');
     } else {
-      tInterval = setInterval(function () { tSession++; renderTimerClock(); }, 1000);
+      tInterval = setInterval(function () { tSession++; renderTimerClock(); if (tSession % 15 === 0) saveLive(); }, 1000);
       tStartBtn.textContent = 'Pause';
       tClock.classList.add('running');
     }
+    saveLive();
   }
 
   function bindTimer() {
     document.getElementById('timerStartBtn').onclick = timerToggle;
     document.getElementById('timerResetBtn').onclick = function () {
       if (tInterval) timerToggle();
-      tSession = 0; renderTimerClock();
+      tSession = 0; saveLive(); renderTimerClock();
     };
     document.getElementById('timerSaveBtn').onclick = function () {
       if (!tSession) return;
@@ -961,7 +982,7 @@
       account().timer.days[k] = (account().timer.days[k] || 0) + tSession;
       saveAccount();
       if (tInterval) timerToggle();
-      tSession = 0;
+      tSession = 0; saveLive();
       renderTimerClock(); renderTimerStats();
     };
     document.getElementById('goalInput').onchange = function (e) {
