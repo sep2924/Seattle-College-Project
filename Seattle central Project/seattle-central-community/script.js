@@ -536,6 +536,20 @@
     document.getElementById('storyModalOverlay').classList.add('show');
   }
 
+  let profQuarter = 'Fall';
+  function markProfQuarter() {
+    document.querySelectorAll('#profQuarterPills .q-pill').forEach(function (b) {
+      b.classList.toggle('on', b.dataset.q === profQuarter);
+      b.setAttribute('aria-pressed', b.dataset.q === profQuarter ? 'true' : 'false');
+    });
+  }
+  document.getElementById('profQuarterPills').addEventListener('click', function (e) {
+    const b = e.target.closest('.q-pill');
+    if (!b) return;
+    profQuarter = b.dataset.q;
+    markProfQuarter();
+  });
+
   function knownProfNames() {
     const seen = {};
     const out = [];
@@ -563,7 +577,15 @@
     document.getElementById('profRevName').value = '';
     document.getElementById('profRevCourse').value = '';
     document.getElementById('profRevCourseName').value = '';
-    document.getElementById('profRevQuarter').value = '';
+    const nowD = new Date();
+    const curYear = nowD.getFullYear();
+    const mo = nowD.getMonth();
+    profQuarter = mo <= 2 ? 'Winter' : mo <= 5 ? 'Spring' : mo <= 7 ? 'Summer' : 'Fall';
+    const ySel = document.getElementById('profRevYear');
+    ySel.innerHTML = '';
+    for (let y = curYear; y >= 2020; y--) ySel.innerHTML += '<option value="' + y + '">' + y + '</option>';
+    ySel.value = String(curYear);
+    markProfQuarter();
     document.getElementById('profRevRating').value = '5';
     document.getElementById('profRevText').value = '';
     document.getElementById('profModalOverlay').classList.add('show');
@@ -1173,7 +1195,7 @@
     await Store.createReview({
       prof: prof,
       course: (document.getElementById('profRevCourse').value.trim() || 'Course') + (document.getElementById('profRevCourseName').value.trim() ? ' · ' + document.getElementById('profRevCourseName').value.trim() : ''),
-      quarter: document.getElementById('profRevQuarter').value.trim() || 'Quarter',
+      quarter: profQuarter + ' ' + document.getElementById('profRevYear').value,
       rating: parseInt(document.getElementById('profRevRating').value, 10),
       text: document.getElementById('profRevText').value.trim() || '(no experience shared)'
     });

@@ -241,8 +241,15 @@
     <input type="text" id="profRevCourse" placeholder="e.g. BIOL 160">
     <label for="profRevCourseName">Course name</label>
     <input type="text" id="profRevCourseName" placeholder="e.g. General Biology">
-    <label for="profRevQuarter">Quarter taken</label>
-    <input type="text" id="profRevQuarter" placeholder="e.g. Fall 2025">
+    <label id="profQuarterLabel">Quarter taken</label>
+    <div class="q-pills" id="profQuarterPills" role="group" aria-labelledby="profQuarterLabel">
+      <button type="button" class="q-pill" data-q="Winter">Winter</button>
+      <button type="button" class="q-pill" data-q="Spring">Spring</button>
+      <button type="button" class="q-pill" data-q="Summer">Summer</button>
+      <button type="button" class="q-pill" data-q="Fall">Fall</button>
+    </div>
+    <label for="profRevYear">Year</label>
+    <select id="profRevYear"></select>
     <label for="profRevRating">Rating (1–5)</label>
     <select id="profRevRating">
       <option value="5">5 – Excellent</option>

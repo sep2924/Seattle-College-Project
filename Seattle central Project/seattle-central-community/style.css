@@ -804,3 +804,8 @@
 .shot-block span{ display:block; font-size:9px; font-weight:600; opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .shot-hint{ margin-top:12px; text-align:center; font-size:12.5px; color:var(--ink-soft); animation: shotfade .6s ease 3s forwards; }
 @keyframes shotfade{ to{ opacity:0; } }
+
+.q-pills{ display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:6px; }
+.q-pill{ height:40px; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--bg); font-family:var(--font-body); font-size:13px; font-weight:700; color:var(--ink-soft); cursor:pointer; padding:0; }
+.q-pill.on{ background:var(--mint-soft); border-color:var(--mint); color:#00785F; }
+#profRevYear{ width:100%; }
