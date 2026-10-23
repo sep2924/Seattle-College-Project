@@ -427,6 +427,13 @@
     const comments = p.comments = p.comments || [];
     const user = Store.currentUser();
     const mine = user && p.authorId === user.userId;
+    const anonMap = {};
+    let anonCount = 0;
+    function anonName(c) {
+      if (c.authorId === p.authorId) return 'Author';
+      if (!anonMap[c.authorId]) anonMap[c.authorId] = ++anonCount;
+      return 'Anonymous ' + anonMap[c.authorId];
+    }
     document.getElementById('postDetailContent').innerHTML = `
       <div class="post-detail">
         <div class="post-meta"><span class="post-tag">${escapeHtml(boardNames[p.board])}</span><span>·</span><span>Seattle Central</span><span>·</span><span>${escapeHtml(timeAgo(p.ts))}${p.edited ? ' · edited' : ''}</span>${sampleBadge(p)}</div>
@@ -443,8 +450,9 @@
         <h4>Comments (${comments.length})</h4>
         ${comments.length === 0 ? '<div class="empty" style="padding:18px 0;"><p>No comments yet. Start the conversation.</p></div>' : ''}
         ${comments.map(function (c, idx) {
-          const initials = String(c.name || 'S').split(' ').map(function (w) { return w[0]; }).join('').slice(0, 2);
           const canEdit = user && c.authorId === user.userId;
+          const label = anonName(c);
+          const initials = label === 'Author' ? 'OP' : label.split(' ')[1];
           if (idx === editingCommentIndex) {
             return `<div class="comment">
               <div class="c-avatar">${escapeHtml(initials)}</div>
@@ -460,7 +468,7 @@
           return `<div class="comment">
             <div class="c-avatar">${escapeHtml(initials)}</div>
             <div class="c-body">
-              <div class="c-name">${escapeHtml(c.name)}</div>
+              <div class="c-name">${escapeHtml(label)}${canEdit ? ' (you)' : ''}</div>
               <div class="c-text">${escapeHtml(c.text)}</div>
               <div class="c-time">${escapeHtml(c.ts ? timeAgo(c.ts) : '')}${c.edited ? ' · edited' : ''}</div>
               ${canEdit ? `<div class="comment-actions">

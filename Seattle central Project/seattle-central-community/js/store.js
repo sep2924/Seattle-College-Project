@@ -551,20 +551,20 @@
       const user = this.session;
       if (this.mode === 'supabase') {
         const { error } = await this.supabase.from('comments').insert({
-          post_id: postId, author_id: user.userId, nickname: user.nickname, body: text
+          post_id: postId, author_id: user.userId, nickname: 'Anonymous', body: text
         });
         return error ? { ok: false, error: error.message } : { ok: true };
       }
       const post = this.db.posts.find(function (p) { return p.id === postId; });
       if (!post) return { ok: false };
-      const comment = { id: uid('c'), authorId: user.userId, name: user.nickname, text: text, ts: now() };
+      const comment = { id: uid('c'), authorId: user.userId, name: 'Anonymous', text: text, ts: now() };
       post.comments = post.comments || [];
       post.comments.push(comment);
       if (post.authorId !== user.userId) {
         this.db.notifications.unshift({
           id: uid('n'),
           userId: post.authorId,
-          text: user.nickname + ' commented on “' + post.title + '”',
+          text: 'Someone commented on “' + post.title + '”',
           ts: now(),
           read: false,
           postId: post.id
