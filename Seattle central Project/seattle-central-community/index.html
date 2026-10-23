@@ -237,11 +237,21 @@
     <label for="profRevName">Professor name</label>
     <input type="text" id="profRevName" list="profNameList" autocomplete="off" placeholder="Start typing a name">
     <datalist id="profNameList"></datalist>
-    <label for="profRevCourse">Course code</label>
-    <input type="text" id="profRevCourse" list="courseCodeList" autocomplete="off" placeholder="e.g. BIOL 160"><datalist id="courseCodeList"></datalist>
-    <label for="profRevCourseName">Course name</label>
-    <input type="text" id="profRevCourseName" placeholder="e.g. General Biology">
-    <div id="profCourseHint" class="ps-sm" style="margin-top:4px"></div>
+    <label for="profClassSearch">Class</label>
+    <div id="profClassPicked" class="pk-picked" hidden><span id="profClassPickedText"></span><button type="button" id="profClassChange">Change</button></div>
+    <div id="profClassFind">
+      <input type="search" id="profClassSearch" autocomplete="off" placeholder="Search by code or name, e.g. math 151">
+      <div id="profClassMatches"></div>
+      <div id="profClassBrowse"><div class="pk-lbl">Or browse by subject</div><div id="profClassSubj"></div></div>
+      <button type="button" id="profClassManualBtn" class="pk-type">Not in the list? Type it yourself</button>
+    </div>
+    <div id="profClassManual" hidden>
+      <label for="profRevCourse">Course code</label>
+      <input type="text" id="profRevCourse" list="courseCodeList" autocomplete="off" placeholder="e.g. BIOL 160"><datalist id="courseCodeList"></datalist>
+      <label for="profRevCourseName">Course name</label>
+      <input type="text" id="profRevCourseName" placeholder="e.g. General Biology">
+      <div id="profCourseHint" class="ps-sm" style="margin-top:4px"></div>
+    </div>
     <label id="profQuarterLabel">Quarter taken</label>
     <div class="q-pills" id="profQuarterPills" role="group" aria-labelledby="profQuarterLabel">
       <button type="button" class="q-pill" data-q="Winter">Winter</button>

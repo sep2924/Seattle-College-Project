@@ -894,3 +894,21 @@
 .ps-chip b{margin-right:2px}
 .ps-chip.empty{opacity:.55}
 .ps-chip.empty{opacity:.55}
+
+/* ===== Class picker in the review form ===== */
+.pk-lbl{font-size:12px;font-weight:700;color:var(--ink-soft);margin:12px 0 6px}
+.pk-chips{display:flex;flex-wrap:wrap;gap:8px}
+.pk-chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 12px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;font-family:inherit}
+.pk-chip b{font-weight:800;margin-right:2px}
+.pk-chip.on{background:var(--mint-soft);border-color:var(--mint);color:#00785F;cursor:default}
+.pk-chip.more{background:var(--bg);color:#00785F;border-style:dashed;font-weight:700}
+.pk-list{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface);margin-top:6px}
+.pk-list div{padding:10px 12px;border-top:1px solid var(--line);font-size:13.5px;color:var(--ink);cursor:pointer}
+.pk-list div:first-child{border-top:0}
+.pk-list div b{margin-right:6px}
+.pk-list div.more{color:#00785F;font-weight:700;text-align:center;background:var(--bg)}
+.pk-none{margin-top:6px;font-size:12.5px;color:var(--ink-soft)}
+.pk-type{display:block;border:0;background:none;padding:0;margin-top:10px;font-family:inherit;font-size:12.5px;font-weight:700;color:#00785F;cursor:pointer}
+.pk-picked{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--mint);background:var(--mint-soft);color:#00785F;font-weight:700;border-radius:12px;padding:11px 12px;font-size:14px}
+.pk-picked button{border:0;background:none;color:#00785F;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit}
+#profClassFind[hidden],#profClassPicked[hidden],#profClassManual[hidden],#profClassBrowse[hidden]{display:none}
