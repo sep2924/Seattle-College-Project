@@ -926,7 +926,7 @@
 
   const pad2 = function (n) { return String(n).padStart(2, '0'); };
   const hmsFmt = function (s) { return pad2(Math.floor(s / 3600)) + ':' + pad2(Math.floor(s % 3600 / 60)) + ':' + pad2(s % 60); };
-  const hFmt = function (s) { return (s / 3600).toFixed(1) + 'h'; };
+  const hFmt = function (s) { return s < 60 ? s + 's' : s < 3600 ? Math.floor(s / 60) + 'm' : (s / 3600).toFixed(1) + 'h'; };
   function dateKey(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
 
   function renderTimerClock() {
@@ -938,6 +938,7 @@
     document.getElementById('goalFill').style.width = (pct * 100) + '%';
     document.getElementById('goalPct').textContent = Math.round(pct * 100) + '% of daily goal';
     document.getElementById('goalInput').value = account().timer.goalHours;
+    if (document.getElementById('timerStats') && document.getElementById('timerChart')) renderTimerStats();
   }
 
   function saveLive() {
@@ -994,6 +995,7 @@
   function renderTimerStats() {
     const now = new Date();
     const days = account().timer.days;
+    const live = tSession || 0;
     let today = 0, week = 0, month = 0, all = 0;
     const monday = new Date(now); monday.setHours(0, 0, 0, 0);
     monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
@@ -1004,6 +1006,7 @@
       if (d >= monday) week += s;
       if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) month += s;
     });
+    today += live; week += live; month += live; all += live;
     document.getElementById('timerStats').innerHTML = [
       ['Today', today], ['This week', week], ['This month', month], ['All time', all]
     ].map(function (pair) {
@@ -1013,14 +1016,14 @@
     let max = 0;
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now); d.setDate(d.getDate() - i);
-      const secs = days[dateKey(d)] || 0;
+      const secs = (days[dateKey(d)] || 0) + (i === 0 ? live : 0);
       max = Math.max(max, secs);
       bars.push({ label: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][d.getDay()], secs: secs, isToday: i === 0 });
     }
     document.getElementById('timerChart').innerHTML = bars.map(function (b) {
       const h = max ? Math.max(2, Math.round(b.secs / max * 70)) : 2;
       return `<div class="tbar${b.isToday ? ' today' : ''}">
-        <div class="h">${b.secs ? (b.secs / 3600).toFixed(1) : ''}</div>
+        <div class="h">${b.secs ? hFmt(b.secs) : ''}</div>
         <div class="bar" style="height:${h}px"></div>
         <div class="d">${b.label}</div></div>`;
     }).join('');
