@@ -588,7 +588,9 @@
   document.getElementById('profRevCourse').addEventListener('input', syncCourseName);
   document.getElementById('profRevCourse').addEventListener('change', syncCourseName);
 
-  let psMode = 'prof', psQ = '', psSel = null;
+  let psMode = 'prof', psQ = '', psSel = null, psSubj = null;
+  function subjName(sj) { return (window.SCC_SUBJECTS || {})[sj] || ''; }
+  function subjOf(code) { const m = String(code || '').toUpperCase().match(/^[A-Z]+/); return m ? m[0] : '#'; }
   const psExp = {};
   function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
   function avgOf(list) { return list.reduce(function (s, r) { return s + Number(r.rating || 0); }, 0) / (list.length || 1); }
@@ -622,8 +624,14 @@
         .map(function (p) { return { key: p.key, label: p.name + ' · ' + plural(p.reviews.length, 'review') }; });
     }
     const idx = courseIndex();
+    if (psSubj && !q) {
+      return Object.keys(idx).map(function (k) { return idx[k]; })
+        .filter(function (e) { return subjOf(e.code) === psSubj; })
+        .sort(function (a, b) { return a.key.localeCompare(b.key); })
+        .map(function (e) { return { key: e.key, label: e.code + (e.name ? ' · ' + e.name : '') + ' · ' + plural(e.reviews.length, 'review') }; });
+    }
     return Object.keys(idx).map(function (k) { return idx[k]; })
-      .filter(function (e) { return (qk && e.key.indexOf(qk) >= 0) || (e.name && e.name.toLowerCase().indexOf(q) >= 0); })
+      .filter(function (e) { return (qk && e.key.indexOf(qk) >= 0) || (e.name && e.name.toLowerCase().indexOf(q) >= 0) || subjName(subjOf(e.code)).toLowerCase().indexOf(q) >= 0; })
       .sort(function (a, b) { return b.reviews.length - a.reviews.length; }).slice(0, 6)
       .map(function (e) { return { key: e.key, label: e.code + (e.name ? ' · ' + e.name : '') + ' · ' + plural(e.reviews.length, 'review') }; });
   }
@@ -665,7 +673,17 @@
     document.querySelectorAll('#profSearchTabs .ps-tab').forEach(function (b) { b.classList.toggle('on', b.dataset.pmode === psMode); });
     document.getElementById('profSearchIn').placeholder = psMode === 'prof' ? 'Search a professor name' : 'Search a class code or name';
     const comp = document.getElementById('profComposer');
-    if (!psQ.trim()) { out.innerHTML = ''; list.hidden = false; if (comp) comp.hidden = false; return; }
+    const browsing = psMode === 'class' && !psQ.trim();
+    if (browsing && !psSubj) {
+      const idx = courseIndex(), subs = {};
+      Object.keys(idx).forEach(function (k) { const sj = subjOf(idx[k].code); subs[sj] = (subs[sj] || 0) + 1; });
+      const names = Object.keys(subs).sort();
+      out.innerHTML = names.length ? '<div class="ps-lbl" style="margin-top:2px">Browse by subject</div><div class="ps-chips">' + names.map(function (n) {
+        return '<button type="button" class="ps-chip" data-psubj="' + escapeHtml(n) + '"><b>' + escapeHtml(n) + '</b>' + (subjName(n) && subjName(n) !== n ? ' ' + escapeHtml(subjName(n)) : '') + ' <span>' + subs[n] + '</span></button>';
+      }).join('') + '</div>' : '';
+      list.hidden = false; if (comp) comp.hidden = false; return;
+    }
+    if (!psQ.trim() && !browsing) { out.innerHTML = ''; list.hidden = false; if (comp) comp.hidden = false; return; }
     list.hidden = true; if (comp) comp.hidden = true;
     const sug = psSuggestions();
     if (!sug.length) {
@@ -674,7 +692,7 @@
     }
     if (psSel && !sug.some(function (s) { return s.key === psSel; })) psSel = null;
     if (!psSel && sug.length === 1) psSel = sug[0].key;
-    out.innerHTML = '<div class="ps-sug">' + sug.map(function (s) {
+    out.innerHTML = (browsing ? '<div class="ps-lbl" style="margin-top:2px"><button type="button" class="ps-link" data-psubj="" style="margin:0">← All subjects</button> · ' + escapeHtml(psSubj) + (subjName(psSubj) ? ' · ' + escapeHtml(subjName(psSubj)) : '') + '</div>' : '') + '<div class="ps-sug">' + sug.map(function (s) {
       return '<div role="button" tabindex="0" data-psel="' + escapeHtml(s.key) + '" class="' + (s.key === psSel ? 'on' : '') + '">' + escapeHtml(s.label) + '</div>';
     }).join('') + '</div>' + (psSel ? psResultsHTML() : '');
   }
@@ -682,11 +700,13 @@
     const page = document.getElementById('page-professors');
     page.addEventListener('input', function (e) {
       if (e.target.id !== 'profSearchIn') return;
-      psQ = e.target.value; psSel = null; renderProfSearch();
+      psQ = e.target.value; psSel = null; psSubj = null; renderProfSearch();
     });
     page.addEventListener('click', function (e) {
       const mode = e.target.closest('[data-pmode]');
-      if (mode) { psMode = mode.dataset.pmode; psSel = null; renderProfSearch(); return; }
+      if (mode) { psMode = mode.dataset.pmode; psSel = null; psSubj = null; renderProfSearch(); return; }
+      const subj = e.target.closest('[data-psubj]');
+      if (subj) { psSubj = subj.dataset.psubj || null; psSel = null; renderProfSearch(); return; }
       const sel = e.target.closest('[data-psel]');
       if (sel) { psSel = sel.dataset.psel; renderProfSearch(); return; }
       const exp = e.target.closest('[data-pexp]');
