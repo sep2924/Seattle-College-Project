@@ -1007,6 +1007,7 @@
         <button class="btn btn-ghost sched-add-btn" id="schedShotBtn" type="button">Screenshot</button>
         <button class="btn btn-primary sched-add-btn" id="schedAddBtn" type="button">Add class</button>
       </div>
+      <div class="sched-online" id="schedOnline" hidden></div>
       <div class="sched-grid-wrap"><div class="sched-grid" id="schedGrid"></div></div>
       <div class="empty" id="schedEmpty" hidden>
         <h4>No classes yet</h4>
@@ -1430,6 +1431,7 @@
 
   const SCHED_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
   const SCHED_START = 8, SCHED_END = 20;
+  let clsOnline = false, clsAsync = false;
   const CLASS_COLORS = [
     { bg: '#E6ECF8', text: '#1E4CA2' },
     { bg: '#E8EAFF', text: '#3D4CCC' },
@@ -1483,6 +1485,14 @@
     if (s.active < s.quarters.length - 1) { nextBtn.textContent = s.quarters[s.active + 1].name + ' ›'; nextBtn.classList.remove('qtr-new'); }
     else { nextBtn.textContent = '+ New quarter'; nextBtn.classList.add('qtr-new'); }
     const grid = document.getElementById('schedGrid');
+    const asyncBox = document.getElementById('schedOnline');
+    const asyncList = q.classes.filter(function (c) { return c.online && c.async; });
+    if (asyncBox) {
+      asyncBox.hidden = asyncList.length === 0;
+      asyncBox.innerHTML = '<div class="so-title">Online classes</div>' + asyncList.map(function (c) {
+        return '<button type="button" class="so-chip" data-cls-id="' + c.id + '">' + escapeHtml(c.code) + (c.room ? ' · ' + escapeHtml(c.room) : ' · Async') + '</button>';
+      }).join('');
+    }
     const empty = document.getElementById('schedEmpty');
     empty.hidden = q.classes.length > 0;
     const todayIdx = new Date().getDay() - 1;
@@ -1495,14 +1505,14 @@
     for (let day = 0; day < 5; day++) {
       html += '<div class="sg-daycol" data-day="' + day + '">';
       html += Array.from({ length: rows }, function () { return '<div class="hline"></div>'; }).join('');
-      q.classes.filter(function (c) { return c.days.indexOf(day) >= 0; }).forEach(function (c) {
+      q.classes.filter(function (c) { return !c.async && c.days.indexOf(day) >= 0; }).forEach(function (c) {
         const top = (c.start - SCHED_START) * rowH;
         const height = Math.max(20, (c.end - c.start) * rowH - 3);
         const col = CLASS_COLORS[c.color % CLASS_COLORS.length];
-        html += `<button class="sg-block" type="button" data-cls-id="${c.id}"
-          style="top:${top}px;height:${height}px;background:${col.bg};color:${col.text};">
+        html += `<button class="sg-block${c.online ? ' sg-online' : ''}" type="button" data-cls-id="${c.id}"
+          style="top:${top}px;height:${height}px;background:${col.bg};color:${col.text};${c.online ? 'border:1px dashed ' + col.text + ';' : ''}">
           <div class="code">${escapeHtml(c.code)}</div>
-          <div class="room">${escapeHtml(c.room || '')}</div></button>`;
+          <div class="room">${c.online ? 'Online' + (c.room ? ' · ' + escapeHtml(c.room) : '') : escapeHtml(c.room || '')}</div></button>`;
       });
       html += '</div>';
     }
@@ -1526,6 +1536,22 @@
       return '<button class="color-dot' + (i === clsSelectedColor ? ' on' : '') + '" type="button" data-color="' + i + '" style="background:' + c.bg + ';box-shadow:inset 0 0 0 6px ' + c.bg + ', inset 0 0 0 20px ' + c.text + '22;" aria-label="Color ' + (i + 1) + '"></button>';
     }).join('');
   }
+  function syncClsType() {
+    document.querySelectorAll('#clsType .day-chip').forEach(function (b) { b.classList.toggle('on', (b.dataset.online === '1') === clsOnline); });
+    document.querySelectorAll('#clsWhen .day-chip').forEach(function (b) { b.classList.toggle('on', (b.dataset.async === '1') === clsAsync); });
+    document.getElementById('clsWhenWrap').hidden = !clsOnline;
+    document.getElementById('clsTimeWrap').hidden = clsOnline && clsAsync;
+    document.getElementById('clsRoomLabel').textContent = clsOnline ? 'Where (optional)' : 'Room';
+    document.getElementById('clsRoom').placeholder = clsOnline ? 'e.g. Canvas, Zoom link' : 'e.g. BE 3175';
+  }
+  document.getElementById('clsType').addEventListener('click', function (e) {
+    const b = e.target.closest('.day-chip'); if (!b) return;
+    const was = clsOnline; clsOnline = b.dataset.online === '1'; if (!clsOnline) clsAsync = false; else if (!was) clsAsync = true; syncClsType();
+  });
+  document.getElementById('clsWhen').addEventListener('click', function (e) {
+    const b = e.target.closest('.day-chip'); if (!b) return;
+    clsAsync = b.dataset.async === '1'; syncClsType();
+  });
   function openClassModal(id) {
     clsEditingId = id == null ? null : id;
     const c = id != null ? activeQuarter().classes.find(function (x) { return x.id === id; }) : null;
@@ -1536,6 +1562,8 @@
     document.getElementById('clsCredits').value = (c && c.credits) != null ? c.credits : 5;
     clsSelectedDays = new Set((c && c.days) || []);
     clsSelectedColor = (c && c.color) != null ? c.color : (activeQuarter().classes.length % CLASS_COLORS.length);
+    clsOnline = !!(c && c.online); clsAsync = !!(c && c.online && c.async);
+    syncClsType();
     buildTimeOptions(); buildDayPicker(); buildColorPicker();
     document.getElementById('clsStart').value = (c && c.start) != null ? c.start : 9;
     document.getElementById('clsEnd').value = (c && c.end) != null ? c.end : 10;
@@ -1552,9 +1580,11 @@
     const q = activeQuarter();
     const box = document.getElementById('shotMode');
     let first = 8, last = 17;
-    if (q.classes.length) {
-      first = Math.floor(Math.min.apply(null, q.classes.map(function (c) { return c.start; })));
-      last = Math.ceil(Math.max.apply(null, q.classes.map(function (c) { return c.end; })));
+    const timed = q.classes.filter(function (c) { return !c.async; });
+    const asyncL = q.classes.filter(function (c) { return c.async; });
+    if (timed.length) {
+      first = Math.floor(Math.min.apply(null, timed.map(function (c) { return c.start; })));
+      last = Math.ceil(Math.max.apply(null, timed.map(function (c) { return c.end; })));
       if (last - first < 4) last = first + 4;
     }
     const rows = last - first;
@@ -1565,20 +1595,21 @@
     grid += '<div class="shot-times">' + Array.from({ length: rows }, function (_, r) { return '<div>' + hourLabel(first + r) + '</div>'; }).join('') + '</div>';
     for (let day = 0; day < 5; day++) {
       grid += '<div class="shot-col">' + Array.from({ length: rows }, function () { return '<i></i>'; }).join('');
-      q.classes.filter(function (c) { return c.days.indexOf(day) >= 0; }).forEach(function (c) {
+      q.classes.filter(function (c) { return !c.async && c.days.indexOf(day) >= 0; }).forEach(function (c) {
         const col = CLASS_COLORS[c.color % CLASS_COLORS.length];
         const top = (c.start - first) * rowH;
         const height = Math.max(26, (c.end - c.start) * rowH - 3);
-        grid += '<div class="shot-block" style="top:' + top + 'px;height:' + height + 'px;background:' + col.bg + ';color:' + col.text + ';">' +
+        grid += '<div class="shot-block" style="top:' + top + 'px;height:' + height + 'px;background:' + col.bg + ';color:' + col.text + ';' + (c.online ? 'border:1px dashed ' + col.text + ';' : '') + '">' +
           '<b>' + escapeHtml(c.code) + '</b>' +
           (c.name ? '<span>' + escapeHtml(c.name) + '</span>' : '') +
-          (c.room ? '<span>' + escapeHtml(c.room) + '</span>' : '') +
+          (c.online ? '<span>Online</span>' : (c.room ? '<span>' + escapeHtml(c.room) + '</span>' : '')) +
           '<span>' + shotTime(c.start, c.end) + '</span></div>';
       });
       grid += '</div>';
     }
     grid += '</div>';
     box.innerHTML = '<div class="shot-title"><h2>' + escapeHtml(q.name) + '</h2><span>' + credits + ' credits</span></div>' +
+      (asyncL.length ? '<div class="shot-async"><b>Online classes:</b> ' + asyncL.map(function (c) { return escapeHtml(c.code) + (c.name ? ' (' + escapeHtml(c.name) + ')' : ''); }).join(', ') + '</div>' : '') +
       '<div class="shot-grid">' + grid + '</div>' +
       '<div class="shot-hint">Take your screenshot now. Tap anywhere to close.</div>';
     box.hidden = false;
@@ -1593,6 +1624,10 @@
     document.getElementById('schedSemester').onchange = function (e) {
       activeQuarter().name = e.target.value.trim() || 'My quarter';
       saveAccount(); renderSchedule();
+    };
+    document.getElementById('schedOnline').onclick = function (e) {
+      const chip = e.target.closest('.so-chip');
+      if (chip) openClassModal(Number(chip.dataset.clsId));
     };
     document.getElementById('schedGrid').onclick = function (e) {
       const block = e.target.closest('.sg-block');
@@ -2026,7 +2061,8 @@
   document.getElementById('clsSave').onclick = function () {
     const code = document.getElementById('clsCode').value.trim();
     if (!code) { document.getElementById('clsCode').focus(); return; }
-    if (clsSelectedDays.size === 0) {
+    const isAsync = clsOnline && clsAsync;
+    if (!isAsync && clsSelectedDays.size === 0) {
       document.getElementById('clsDays').style.outline = '2px solid var(--warn)';
       setTimeout(function () { document.getElementById('clsDays').style.outline = ''; }, 1200);
       return;
@@ -2038,9 +2074,11 @@
       code: code,
       name: document.getElementById('clsName').value.trim(),
       room: document.getElementById('clsRoom').value.trim(),
-      days: Array.from(clsSelectedDays).sort(),
-      start: start,
-      end: end,
+      online: clsOnline,
+      async: isAsync,
+      days: isAsync ? [] : Array.from(clsSelectedDays).sort(),
+      start: isAsync ? 0 : start,
+      end: isAsync ? 0 : end,
       color: clsSelectedColor,
       credits: Math.max(0, parseInt(document.getElementById('clsCredits').value, 10) || 0)
     };

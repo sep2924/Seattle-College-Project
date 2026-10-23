@@ -191,13 +191,27 @@
     <input type="text" id="clsCode" placeholder="e.g. MATH 151">
     <label for="clsName">Course name</label>
     <input type="text" id="clsName" placeholder="e.g. Calculus I">
-    <label for="clsRoom">Room</label>
+    <label>Class type</label>
+    <div class="cls-seg" id="clsType">
+      <button type="button" class="day-chip on" data-online="0">In person</button>
+      <button type="button" class="day-chip" data-online="1">Online</button>
+    </div>
+    <div id="clsWhenWrap" hidden>
+      <label>When does it meet?</label>
+      <div class="cls-seg" id="clsWhen">
+        <button type="button" class="day-chip on" data-async="1">No set time (async)</button>
+        <button type="button" class="day-chip" data-async="0">Live on set days and times</button>
+      </div>
+    </div>
+    <label for="clsRoom" id="clsRoomLabel">Room</label>
     <input type="text" id="clsRoom" placeholder="e.g. BE 3175">
+    <div id="clsTimeWrap">
     <label>Days</label>
     <div class="day-picker" id="clsDays"></div>
     <div class="modal-2col">
       <div><label for="clsStart">Starts</label><select id="clsStart"></select></div>
       <div><label for="clsEnd">Ends</label><select id="clsEnd"></select></div>
+    </div>
     </div>
     <div class="modal-2col">
       <div><label for="clsCredits">Credits</label><input type="number" id="clsCredits" min="0" max="10" value="5"></div>

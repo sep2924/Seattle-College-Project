@@ -939,3 +939,12 @@
 .hot-row .l{font-size:12.5px;font-weight:700;color:var(--ink-soft);white-space:nowrap}
 /* the phone bottom bar is for phones only */
 @media (min-width: 900px){ .bottomnav{ display:none !important; } }
+
+/* online classes */
+.cls-seg{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+.sched-online{ background:#F3F6FC; border:1px solid #C9D5EE; border-radius:12px; padding:8px 10px; margin:0 0 10px; }
+.sched-online[hidden]{ display:none; }
+.so-title{ font-size:11px; font-weight:700; color:#1E4CA2; margin-bottom:6px; }
+.so-chip{ font-family:inherit; background:#E6ECF8; color:#1E4CA2; border:1px dashed #1E4CA2; border-radius:999px; padding:4px 10px; font-size:12px; font-weight:600; margin:0 6px 6px 0; cursor:pointer; }
+.sg-online{ border-style:dashed !important; }
+.shot-async{ font-size:12px; margin:0 0 8px; color:#1E4CA2; }
