@@ -483,7 +483,8 @@
       const input = document.getElementById('commentInput');
       const text = input.value.trim();
       if (!text) return;
-      await Store.addComment(p.id, text);
+      const cr = await Store.addComment(p.id, text);
+      if (cr && cr.ok === false) { alert('Could not post comment: ' + (cr.error || 'try again')); return; }
       editingCommentIndex = null;
       await refreshCache();
       openPost(id, true);

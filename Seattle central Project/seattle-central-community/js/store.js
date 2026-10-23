@@ -478,6 +478,12 @@
     },
 
     updatePost: async function (id, payload) {
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.from('posts')
+          .update({ board: payload.board, title: payload.title, body: payload.body, edited: true })
+          .eq('id', id).eq('author_id', this.session.userId);
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
       const post = this.db.posts.find(function (p) { return p.id === id; });
       if (!post) return { ok: false, error: 'Post not found.' };
       if (post.authorId !== this.session.userId) return { ok: false, error: 'You can only edit your own posts.' };
@@ -490,6 +496,10 @@
     },
 
     deletePost: async function (id) {
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.from('posts').delete().eq('id', id);
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
       const post = this.db.posts.find(function (p) { return p.id === id; });
       if (!post) return { ok: false };
       if (post.authorId !== this.session.userId && !post.isSample) return { ok: false, error: 'You can only delete your own posts.' };
@@ -498,8 +508,20 @@
       return { ok: true };
     },
 
+    _commentIds: async function (postId) {
+      const { data } = await this.supabase.from('comments').select('id, created_at')
+        .eq('post_id', postId).order('created_at', { ascending: true }).order('id', { ascending: true });
+      return (data || []).map(function (c) { return c.id; });
+    },
+
     addComment: async function (postId, text) {
       const user = this.session;
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.from('comments').insert({
+          post_id: postId, author_id: user.userId, nickname: user.nickname, body: text
+        });
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
       const post = this.db.posts.find(function (p) { return p.id === postId; });
       if (!post) return { ok: false };
       const comment = { id: uid('c'), authorId: user.userId, name: user.nickname, text: text, ts: now() };
@@ -520,6 +542,13 @@
     },
 
     updateComment: async function (postId, idx, text) {
+      if (this.mode === 'supabase') {
+        const ids = await this._commentIds(postId);
+        if (!ids[idx]) return;
+        await this.supabase.from('comments').update({ body: text, edited: true })
+          .eq('id', ids[idx]).eq('author_id', this.session.userId);
+        return;
+      }
       const post = this.db.posts.find(function (p) { return p.id === postId; });
       if (!post || !post.comments[idx]) return;
       if (post.comments[idx].authorId !== this.session.userId) return;
@@ -529,6 +558,13 @@
     },
 
     deleteComment: async function (postId, idx) {
+      if (this.mode === 'supabase') {
+        const ids = await this._commentIds(postId);
+        if (!ids[idx]) return;
+        await this.supabase.from('comments').delete()
+          .eq('id', ids[idx]).eq('author_id', this.session.userId);
+        return;
+      }
       const post = this.db.posts.find(function (p) { return p.id === postId; });
       if (!post) return;
       const c = post.comments[idx];
@@ -540,6 +576,13 @@
 
     createStory: async function (payload) {
       const user = this.session;
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.from('stories').insert({
+          author_id: user.userId, from_school: payload.from, to_school: payload.to,
+          major: payload.major, gpa: payload.gpa, body: payload.text
+        });
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
       const story = Object.assign({
         id: uid('story'),
         authorId: user.userId,
@@ -554,6 +597,13 @@
 
     createReview: async function (payload) {
       const user = this.session;
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.from('prof_reviews').insert({
+          author_id: user.userId, prof_name: payload.prof, course: payload.course,
+          quarter: payload.quarter, rating: payload.rating, body: payload.text
+        });
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
       const review = Object.assign({
         id: uid('rev'),
         authorId: user.userId,
@@ -689,8 +739,10 @@
       ts: new Date(row.created_at).getTime(),
       edited: row.edited,
       isSample: row.is_sample,
-      comments: (row.comments || []).map(function (c) {
-        return { id: c.id, authorId: c.author_id, name: c.nickname || 'Student', text: c.body, ts: new Date(c.created_at).getTime() };
+      comments: (row.comments || []).slice().sort(function (a, b) {
+        return new Date(a.created_at) - new Date(b.created_at) || (a.id < b.id ? -1 : 1);
+      }).map(function (c) {
+        return { id: c.id, authorId: c.author_id, name: c.nickname || 'Student', text: c.body, edited: c.edited, ts: new Date(c.created_at).getTime() };
       })
     });
   }
