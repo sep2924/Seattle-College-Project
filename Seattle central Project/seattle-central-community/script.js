@@ -1430,7 +1430,7 @@
   }
 
   const SCHED_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-  const SCHED_START = 8, SCHED_END = 20;
+  const SCHED_START = 8, SCHED_END = 21;
   let clsOnline = false, clsAsync = false;
   const CLASS_COLORS = [
     { bg: '#E6ECF8', text: '#1E4CA2' },
@@ -1490,7 +1490,7 @@
     if (asyncBox) {
       asyncBox.hidden = asyncList.length === 0;
       asyncBox.innerHTML = '<div class="so-title">Online classes</div>' + asyncList.map(function (c) {
-        return '<button type="button" class="so-chip" data-cls-id="' + c.id + '">' + escapeHtml(c.code) + (c.room ? ' · ' + escapeHtml(c.room) : ' · Async') + '</button>';
+        return '<button type="button" class="so-chip" data-cls-id="' + c.id + '">' + escapeHtml(c.code) + (c.prof ? ' · ' + escapeHtml(c.prof) : (c.room ? ' · ' + escapeHtml(c.room) : ' · Async')) + '</button>';
       }).join('');
     }
     const empty = document.getElementById('schedEmpty');
@@ -1512,7 +1512,7 @@
         html += `<button class="sg-block${c.online ? ' sg-online' : ''}" type="button" data-cls-id="${c.id}"
           style="top:${top}px;height:${height}px;background:${col.bg};color:${col.text};${c.online ? 'border:1px dashed ' + col.text + ';' : ''}">
           <div class="code">${escapeHtml(c.code)}</div>
-          <div class="room">${c.online ? 'Online' + (c.room ? ' · ' + escapeHtml(c.room) : '') : escapeHtml(c.room || '')}</div></button>`;
+          <div class="room">${c.online ? 'Online' + (c.room ? ' · ' + escapeHtml(c.room) : '') : escapeHtml(c.room || '')}</div>${c.prof && height >= 40 ? '<div class="room">' + escapeHtml(c.prof) + '</div>' : ''}</button>`;
       });
       html += '</div>';
     }
@@ -1522,7 +1522,7 @@
 
   function buildTimeOptions() {
     let opts = '';
-    for (let h = SCHED_START; h <= SCHED_END; h += 0.5) opts += '<option value="' + h + '">' + hourLabel(h) + '</option>';
+    for (let m = SCHED_START * 60; m <= SCHED_END * 60; m += 5) { const h = m / 60; opts += '<option value="' + h + '">' + hourLabel(h) + '</option>'; }
     document.getElementById('clsStart').innerHTML = opts;
     document.getElementById('clsEnd').innerHTML = opts;
   }
@@ -1541,7 +1541,7 @@
     document.querySelectorAll('#clsWhen .day-chip').forEach(function (b) { b.classList.toggle('on', (b.dataset.async === '1') === clsAsync); });
     document.getElementById('clsWhenWrap').hidden = !clsOnline;
     document.getElementById('clsTimeWrap').hidden = clsOnline && clsAsync;
-    document.getElementById('clsRoomLabel').textContent = clsOnline ? 'Where (optional)' : 'Room';
+    document.getElementById('clsRoomLabel').textContent = clsOnline ? 'Where (optional)' : 'Lecture room (optional)';
     document.getElementById('clsRoom').placeholder = clsOnline ? 'e.g. Canvas, Zoom link' : 'e.g. BE 3175';
   }
   document.getElementById('clsType').addEventListener('click', function (e) {
@@ -1559,6 +1559,7 @@
     document.getElementById('clsCode').value = (c && c.code) || '';
     document.getElementById('clsName').value = (c && c.name) || '';
     document.getElementById('clsRoom').value = (c && c.room) || '';
+    document.getElementById('clsProf').value = (c && c.prof) || '';
     document.getElementById('clsCredits').value = (c && c.credits) != null ? c.credits : 5;
     clsSelectedDays = new Set((c && c.days) || []);
     clsSelectedColor = (c && c.color) != null ? c.color : (activeQuarter().classes.length % CLASS_COLORS.length);
@@ -1603,6 +1604,7 @@
           '<b>' + escapeHtml(c.code) + '</b>' +
           (c.name ? '<span>' + escapeHtml(c.name) + '</span>' : '') +
           (c.online ? '<span>Online</span>' : (c.room ? '<span>' + escapeHtml(c.room) + '</span>' : '')) +
+          (c.prof ? '<span>' + escapeHtml(c.prof) + '</span>' : '') +
           '<span>' + shotTime(c.start, c.end) + '</span></div>';
       });
       grid += '</div>';
@@ -2074,6 +2076,7 @@
       code: code,
       name: document.getElementById('clsName').value.trim(),
       room: document.getElementById('clsRoom').value.trim(),
+      prof: document.getElementById('clsProf').value.trim(),
       online: clsOnline,
       async: isAsync,
       days: isAsync ? [] : Array.from(clsSelectedDays).sort(),
