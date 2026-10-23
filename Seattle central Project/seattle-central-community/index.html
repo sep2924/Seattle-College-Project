@@ -233,7 +233,8 @@
   <div class="modal" role="dialog" aria-labelledby="profModalHeading" aria-modal="true">
     <h3 id="profModalHeading">New professor review</h3>
     <label for="profRevName">Professor name</label>
-    <input type="text" id="profRevName" placeholder="e.g. Dr. Lee">
+    <input type="text" id="profRevName" list="profNameList" autocomplete="off" placeholder="Start typing a name">
+    <datalist id="profNameList"></datalist>
     <label for="profRevCourse">Course code</label>
     <input type="text" id="profRevCourse" placeholder="e.g. BIOL 160">
     <label for="profRevQuarter">Quarter taken</label>
@@ -285,6 +286,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/config.js"></script>
+<script src="js/instructors.js"></script>
 <script src="js/store.js"></script>
 <script src="script.js"></script>
 </body>

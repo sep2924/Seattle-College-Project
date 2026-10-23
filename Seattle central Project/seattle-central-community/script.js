@@ -527,7 +527,30 @@
     document.getElementById('storyModalOverlay').classList.add('show');
   }
 
+  function knownProfNames() {
+    const seen = {};
+    const out = [];
+    (window.SCC_INSTRUCTORS || []).concat((profReviews || []).map(function (r) { return r.prof; })).forEach(function (n) {
+      n = String(n || '').trim();
+      const k = n.toLowerCase();
+      if (n && !seen[k]) { seen[k] = n; out.push(n); }
+    });
+    out.sort(function (a, b) { return a.localeCompare(b); });
+    return out;
+  }
+  function canonicalProfName(typed) {
+    const k = String(typed || '').trim().toLowerCase();
+    const hit = knownProfNames().find(function (n) { return n.toLowerCase() === k; });
+    return hit || String(typed || '').trim();
+  }
+  function fillProfNameList() {
+    document.getElementById('profNameList').innerHTML = knownProfNames().map(function (n) {
+      return '<option value="' + escapeHtml(n) + '"></option>';
+    }).join('');
+  }
+
   function openProfModal() {
+    fillProfNameList();
     document.getElementById('profRevName').value = '';
     document.getElementById('profRevCourse').value = '';
     document.getElementById('profRevQuarter').value = '';
@@ -1092,7 +1115,7 @@
   document.getElementById('profModalCancel').onclick = function () { document.getElementById('profModalOverlay').classList.remove('show'); };
   document.getElementById('profModalOverlay').addEventListener('click', function (e) { if (e.target === e.currentTarget) e.currentTarget.classList.remove('show'); });
   document.getElementById('profModalPost').onclick = async function () {
-    const prof = document.getElementById('profRevName').value.trim();
+    const prof = canonicalProfName(document.getElementById('profRevName').value);
     if (!prof) { document.getElementById('profRevName').focus(); return; }
     await Store.createReview({
       prof: prof,
