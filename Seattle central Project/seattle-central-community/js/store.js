@@ -407,6 +407,17 @@
     },
 
     listPosts: async function () {
+      if (this.guest) {
+        if (this.mode === 'supabase') {
+          const { data, error } = await this.supabase.rpc('public_posts');
+          if (error) return [];
+          return (data || []).map(function (r) {
+            return { id: r.id, authorId: null, board: r.board, title: r.title, body: r.body, likes: r.likes || 0,
+              ts: new Date(r.created_at).getTime(), edited: false, isSample: false, comments: [], commentCount: Number(r.comment_count) || 0 };
+          });
+        }
+        return this.db.posts.slice().sort(function (a, b) { return b.ts - a.ts; }).slice(0, 10).map(normalizePost);
+      }
       if (this.mode === 'supabase') {
         const { data, error } = await this.supabase.from('posts').select('*, comments(*)').order('created_at', { ascending: false });
         if (error) return [];
@@ -422,6 +433,17 @@
     },
 
     listStories: async function () {
+      if (this.guest) {
+        if (this.mode === 'supabase') {
+          const { data, error } = await this.supabase.rpc('public_stories');
+          if (error) return [];
+          return (data || []).map(function (r) {
+            return { id: r.id, authorId: null, from: r.from_school, to: r.to_school, major: r.major, gpa: r.gpa,
+              text: r.body, ts: new Date(r.created_at).getTime(), isSample: false };
+          });
+        }
+        return this.db.stories.slice().sort(function (a, b) { return b.ts - a.ts; }).slice(0, 10);
+      }
       if (this.mode === 'supabase') {
         const { data } = await this.supabase.from('stories').select('*').order('created_at', { ascending: false });
         return (data || []).map(fromSupabaseStory).filter(function (s) {
@@ -432,6 +454,17 @@
     },
 
     listReviews: async function () {
+      if (this.guest) {
+        if (this.mode === 'supabase') {
+          const { data, error } = await this.supabase.rpc('public_reviews');
+          if (error) return [];
+          return (data || []).map(function (r) {
+            return { id: r.id, authorId: null, prof: r.prof_name, course: r.course, quarter: r.quarter, rating: r.rating,
+              text: r.body, ts: new Date(r.created_at).getTime(), isSample: false };
+          });
+        }
+        return this.db.reviews.slice().sort(function (a, b) { return b.ts - a.ts; }).slice(0, 10);
+      }
       if (this.mode === 'supabase') {
         const { data } = await this.supabase.from('prof_reviews').select('*').order('created_at', { ascending: false });
         return (data || []).map(fromSupabaseReview).filter(function (r) {

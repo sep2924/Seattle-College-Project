@@ -53,7 +53,7 @@
       <div class="post-meta"><span class="post-tag">${escapeHtml(boardNames[p.board] || p.board)}</span><span>·</span><span>Seattle Central</span><span>·</span><span>${escapeHtml(timeAgo(p.ts))}</span>${sampleBadge(p)}</div>
       <h3 class="post-title">${escapeHtml(p.title)}</h3>
       <p class="post-body">${escapeHtml(p.body)}</p>
-      <div class="post-foot"><span>♡ ${p.likes || 0}</span><span>${(p.comments || []).length} comments</span></div>
+      <div class="post-foot"><span>♡ ${p.likes || 0}</span><span>${p.commentCount != null ? p.commentCount : (p.comments || []).length} comments</span></div>
     </article>`;
   }
 
@@ -75,11 +75,11 @@
       <h3>${escapeHtml(s.major)}</h3>
       <div class="stats-row"><div class="story-stat">GPA ${escapeHtml(s.gpa)}</div><span class="story-time">${escapeHtml(timeAgo(s.ts))}</span>${sampleBadge(s)}</div>
       <p>${escapeHtml(s.text)}</p>
-      <div class="safety-row">
+      ${Store.guest ? '' : `<div class="safety-row">
         <button class="story-save-btn ${saved ? 'saved' : ''}" type="button" data-story-id="${escapeHtml(s.id)}">${saved ? '★ Saved' : '☆ Save'}</button>
         ${mine ? '' : `<button class="text-action" type="button" data-report="story" data-id="${escapeHtml(s.id)}">Report</button>
         <button class="text-action danger" type="button" data-block="story" data-id="${escapeHtml(s.id)}">Block</button>`}
-      </div>
+      </div>`}
     </article>`;
   }
 
@@ -110,7 +110,7 @@
       </div>
       <div class="review-meta"><span>${escapeHtml(r.quarter)}</span><span>·</span><span>${escapeHtml(timeAgo(r.ts))}</span>${sampleBadge(r)}</div>
       <p>${escapeHtml(r.text)}</p>
-      ${mine ? '' : `<div class="safety-row">
+      ${(mine || Store.guest) ? '' : `<div class="safety-row">
         <button class="text-action" type="button" data-report="review" data-id="${escapeHtml(r.id)}">Report</button>
         <button class="text-action danger" type="button" data-block="review" data-id="${escapeHtml(r.id)}">Block</button>
       </div>`}
@@ -165,7 +165,7 @@
       <div class="section-head"><h2>Campus feed</h2></div>
       <div id="homeFeed">
         ${feed.length ? feed.map(feedItemHTML).join('') : emptyHTML('Nothing in the feed yet', 'Write the first post for your classmates.', 'Write a post', 'compose')}
-      </div>`;
+      </div>${guestFoot()}`;
     showPulse();
   }
 
@@ -183,7 +183,7 @@
       </div>
       <div id="boardPosts">
         ${filtered.map(postHTML).join('') || emptyHTML('Nothing here yet', 'Be the first to write in this board.', 'Write a post', 'compose')}
-      </div>`;
+      </div>${guestFoot()}`;
   }
 
   function renderStories() {
@@ -196,7 +196,7 @@
       </button>
       <div class="stories-list" id="storiesList">
         ${stories.map(storyFullHTML).join('') || emptyHTML('No stories yet', 'Share your transfer journey to help others.', 'Write a story', 'story')}
-      </div>`;
+      </div>${guestFoot()}`;
   }
 
   function renderProfessors() {
@@ -209,7 +209,7 @@
       </button>
       <div class="prof-list" id="profList">
         ${profReviews.map(profFullHTML).join('') || emptyHTML('No reviews yet', 'Be the first to review a professor.', 'Write a review', 'review')}
-      </div>`;
+      </div>${guestFoot()}`;
   }
 
   function renderMyPage() {
@@ -325,6 +325,11 @@
   }
 
   async function goPage(name, extra) {
+    if (Store.guest && ['home', 'board', 'stories', 'professors'].indexOf(name) < 0) {
+      showGuestPrompt();
+      if (location.hash !== '#home') location.hash = '#home'; else name = 'home';
+      return;
+    }
     if (name === 'post' && extra) {
       await refreshCache();
       openPost(extra, true);
@@ -769,7 +774,7 @@
   function showApp() {
     document.getElementById('onboardGate').hidden = true;
     document.getElementById('authGate').hidden = true;
-    document.getElementById('previewGate').hidden = true;
+    document.getElementById('guestBar').hidden = !Store.guest;
     document.getElementById('appRoot').hidden = false;
     const h = hashPage();
     goPage(h.name, h.extra);
@@ -778,7 +783,6 @@
   function showAuth() {
     document.getElementById('onboardGate').hidden = true;
     document.getElementById('authGate').hidden = false;
-    document.getElementById('previewGate').hidden = true;
     document.getElementById('appRoot').hidden = true;
     const demo = !Store.supabaseEnabled();
     document.getElementById('modeBanner').textContent = demo
@@ -787,27 +791,41 @@
     document.getElementById('modeBanner').className = 'mode-banner ' + (demo ? 'warn' : 'ok');
   }
 
-  async function showEntry() {
-    document.getElementById('onboardGate').hidden = true;
-    document.getElementById('authGate').hidden = true;
-    document.getElementById('appRoot').hidden = true;
-    document.getElementById('previewGate').hidden = false;
-    const box = document.getElementById('previewList');
-    let items = [];
-    try { items = await Store.previewPosts(); } catch (e) { items = []; }
-    box.innerHTML = items.length ? items.map(function (p) {
-      return '<div class="preview-item"><strong>' + escapeHtml(p.title) + '</strong><span>' +
-        escapeHtml(String(p.body || '').slice(0, 90)) + (String(p.body || '').length > 90 ? '...' : '') + '</span></div>';
-    }).join('') : '<p class="preview-empty">Be one of the first to post.</p>';
+  function showEntry() {
+    Store.guest = true;
+    showApp();
   }
   function openAuth(mode) {
-    document.getElementById('previewGate').hidden = true;
+    document.getElementById('guestPromptOverlay').classList.remove('show');
     showAuth();
     setAuthMode(mode);
   }
-  document.getElementById('previewLogin').onclick = function () { openAuth('login'); };
-  document.getElementById('previewSignup').onclick = function () { openAuth('signup'); };
   document.getElementById('authBack').onclick = function (e) { e.preventDefault(); showEntry(); };
+
+  function showGuestPrompt() {
+    document.getElementById('guestPromptOverlay').classList.add('show');
+  }
+  document.getElementById('gpNot').onclick = function () { document.getElementById('guestPromptOverlay').classList.remove('show'); };
+  document.getElementById('gpLogin').onclick = function () { openAuth('login'); };
+  document.getElementById('gpSignup').onclick = function () { openAuth('signup'); };
+  document.getElementById('guestBarLogin').onclick = function () { openAuth('login'); };
+  document.getElementById('guestBarSignup').onclick = function () { openAuth('signup'); };
+
+  var GUEST_LOCKED = '.post[data-post-id], .story-save-btn, #storyComposer, #profComposer, [data-empty-action], #fab, #alertsBtn, #searchBtn, [data-page="my"], [data-page="timer"], [data-page="schedule"]';
+  document.addEventListener('click', function (e) {
+    if (!Store.guest || document.getElementById('appRoot').hidden) return;
+    const auth = e.target.closest('[data-guest-auth]');
+    if (auth) { e.preventDefault(); e.stopPropagation(); openAuth(auth.dataset.guestAuth); return; }
+    if (e.target.closest('#guestPromptOverlay') || e.target.closest('#guestBar')) return;
+    if (e.target.closest(GUEST_LOCKED)) { e.preventDefault(); e.stopPropagation(); showGuestPrompt(); }
+  }, true);
+
+  function guestFoot() {
+    if (!Store.guest) return '';
+    return `<div class="guest-foot"><p>Sign up free to see more posts and write your own.</p>
+      <div class="guest-foot-btns"><button class="btn btn-ghost" type="button" data-guest-auth="login">Log in</button>
+      <button class="btn btn-primary" type="button" data-guest-auth="signup">Sign up</button></div></div>`;
+  }
 
   function showOnboard() {
     document.getElementById('onboardGate').hidden = false;
@@ -886,6 +904,7 @@
       err.textContent = 'Account created. Check your email to confirm, then log in.';
       return;
     }
+    Store.guest = false;
     showApp();
   };
 

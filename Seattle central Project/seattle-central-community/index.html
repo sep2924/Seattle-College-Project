@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<meta name="robots" content="noindex, nofollow">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#00CFAE">
@@ -29,6 +30,11 @@
       </button>
     </div>
   </header>
+
+  <div class="guest-bar" id="guestBar" hidden>
+    <span>You are browsing as a guest.</span>
+    <span class="guest-bar-btns"><button class="btn btn-ghost" type="button" id="guestBarLogin">Log in</button><button class="btn btn-primary" type="button" id="guestBarSignup">Sign up</button></span>
+  </div>
 
   <p class="school-bar" id="schoolBar">Seattle Central College · unofficial student space</p>
 
@@ -112,16 +118,14 @@
   </div>
 </div>
 
-<div class="gate" id="previewGate" hidden>
-  <div class="gate-card preview-card">
-    <div class="brand gate-brand"><div class="mark">S</div>Seattle Central</div>
-    <h1 class="gate-title">Student community for Seattle Central</h1>
-    <p class="gate-lede">Boards, transfer stories and professor reviews, written by students. Here is a small preview.</p>
-    <div id="previewList" class="preview-list"></div>
-    <p class="preview-lock">Log in to read more and write your own post.</p>
+<div class="modal-overlay" id="guestPromptOverlay">
+  <div class="modal" role="dialog" aria-labelledby="gpTitle" aria-modal="true">
+    <h3 id="gpTitle">Log in to continue</h3>
+    <p class="aside-copy">Create a free account to write posts, comment, and read full threads.</p>
     <div class="modal-actions">
-      <button class="btn btn-ghost" type="button" id="previewLogin">Log in</button>
-      <button class="btn btn-primary" type="button" id="previewSignup">Sign up</button>
+      <button class="btn btn-ghost" type="button" id="gpNot">Not now</button>
+      <button class="btn btn-ghost" type="button" id="gpLogin">Log in</button>
+      <button class="btn btn-primary" type="button" id="gpSignup">Sign up</button>
     </div>
   </div>
 </div>
@@ -149,7 +153,7 @@
     </div>
     <p class="form-error" id="authError" role="alert"></p>
     <button class="btn btn-primary" type="button" id="authSubmit">Log in</button>
-    <p class="gate-fine"><a href="#" id="authBack">Back to preview</a></p>
+    <p class="gate-fine"><a href="#" id="authBack">Keep browsing as a guest</a></p>
     <p class="gate-fine">By continuing you agree to the <a href="guidelines.html">community guidelines</a> and <a href="privacy.html">privacy notice</a>. Not affiliated with Seattle Central College administration.</p>
   </div>
 </div>
