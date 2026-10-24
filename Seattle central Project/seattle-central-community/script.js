@@ -17,6 +17,7 @@
   let profReviews = [];
   let activeBoard = 'all';
   let lastPage = 'home';
+  let lastHash = '#home';
   let openPostId = null;
   let editingCommentIndex = null;
   let editingPostId = null;
@@ -34,6 +35,27 @@
   ];
 
   function account() { return Store.getPrivate(); }
+
+  // Close every open popup (used when the page changes or Escape is pressed).
+  function closeOverlays() {
+    document.querySelectorAll('.modal-overlay.show').forEach(function (o) {
+      if (o.classList.contains('cw-overlay')) o.remove(); else o.classList.remove('show');
+    });
+    editingPostId = null;
+  }
+  // Stop double taps from sending the same thing twice.
+  async function busy(btn, fn) {
+    if (!btn || btn.dataset.busy === '1') return;
+    btn.dataset.busy = '1'; btn.disabled = true;
+    try { await fn(); } finally { btn.dataset.busy = ''; btn.disabled = false; }
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    const open = document.querySelectorAll('.modal-overlay.show');
+    if (!open.length) return;
+    const top = open[open.length - 1];
+    if (top.classList.contains('cw-overlay')) top.remove(); else top.classList.remove('show');
+  });
   function saveAccount() { Store.savePrivate(); }
 
   function timeAgo(ts) {
@@ -85,18 +107,22 @@
     return '<div class="hot-wrap"><div class="hot-head"><h2>Hot posts</h2><span class="hot-flame">THIS WEEK</span></div>' +
       '<div class="hot-main hot-item" data-post-id="' + escapeHtml(top.id) + '" role="button" tabindex="0"><div class="tag">' + escapeHtml(boardNames[top.board] || top.board) + '</div>' +
       '<h3>' + escapeHtml(top.title) + '</h3><p>' + escapeHtml((top.body || '').slice(0, 110)) + ((top.body || '').length > 110 ? '…' : '') + '</p>' +
-      '<div class="f">' + likeBtnHTML(top) + '<span>' + (top.commentCount != null ? top.commentCount : (top.comments || []).length) + ' comments</span></div></div>' +
+      '<div class="f">' + likeBtnHTML(top) + '<span>' + commentsLabel(top) + '</span></div></div>' +
       list.slice(1).map(function (p, i) {
         return '<div class="hot-row hot-item" data-post-id="' + escapeHtml(p.id) + '" role="button" tabindex="0"><span class="n">' + (i + 2) + '</span><span class="t">' + escapeHtml(p.title) + '</span><span class="l">♥ ' + (p.likes || 0) + '</span></div>';
       }).join('') + '</div>';
   }
 
+  function commentsLabel(p) {
+    const n = p.commentCount != null ? p.commentCount : (p.comments || []).length;
+    return n === 1 ? '1 comment' : n + ' comments';
+  }
   function postHTML(p) {
     return `<article class="post" data-post-id="${escapeHtml(p.id)}">
       <div class="post-meta"><span class="post-tag">${escapeHtml(boardNames[p.board] || p.board)}</span><span>·</span><span>Seattle Central</span><span>·</span><span>${escapeHtml(timeAgo(p.ts))}</span>${sampleBadge(p)}</div>
       <h3 class="post-title">${escapeHtml(p.title)}</h3>
       <p class="post-body">${escapeHtml(p.body)}</p>
-      <div class="post-foot">${likeBtnHTML(p)}<span>${p.commentCount != null ? p.commentCount : (p.comments || []).length} comments</span></div>
+      <div class="post-foot">${likeBtnHTML(p)}<span>${commentsLabel(p)}</span></div>
     </article>`;
   }
 
@@ -415,14 +441,15 @@
       arr.splice(parseInt(x.dataset.i, 10), 1); paint();
     });
     o.querySelector('#cwCancel').onclick = function () { o.remove(); };
-    o.querySelector('#cwSave').onclick = async function () {
+    o.querySelector('#cwSave').onclick = function () { busy(this, saveGoals); };
+    async function saveGoals() {
       addTo(other, '#cwOtherIn'); addTo(dream, '#cwDreamIn');
       const major = o.querySelector('#cwMajor').value.trim();
       if (!major) { alert('Please write your main major.'); return; }
       const r = await Store.savePlan({ major: major, otherMajors: other, dreamSchools: dream, quarters: existing ? existing.quarters : [] });
       if (r && r.ok === false) { alert('Could not save: ' + r.error); return; }
       o.remove(); openPlanId = myPlanId(); await refreshCache(); renderBoard();
-    };
+    }
     const del = o.querySelector('#cwDelPlan');
     if (del) del.onclick = async function () {
       if (!window.confirm('Delete your whole plan? This cannot be undone.')) return;
@@ -480,7 +507,8 @@
       if (x) x.closest('.cw-row').remove();
     });
     o.querySelector('#cwCancel').onclick = function () { o.remove(); };
-    o.querySelector('#cwSaveQ').onclick = async function () {
+    o.querySelector('#cwSaveQ').onclick = function () { busy(this, saveQuarter); };
+    async function saveQuarter() {
       const y = o.querySelector('#cwYear').value;
       const term = qName + ' ' + y;
       if (plan.quarters.some(function (q) { return q.term === term && (!existing || q.id !== existing.id); })) {
@@ -506,7 +534,7 @@
       const r = await Store.savePlan({ major: plan.major, otherMajors: plan.otherMajors, dreamSchools: plan.dreamSchools, quarters: quarters });
       if (r && r.ok === false) { alert('Could not save: ' + r.error); return; }
       o.remove(); await refreshCache(); renderBoard();
-    };
+    }
     const dq = o.querySelector('#cwDelQ');
     if (dq) dq.onclick = async function () {
       if (!window.confirm('Delete ' + existing.term + '?')) return;
@@ -526,17 +554,19 @@
       if (plans.some(function (p) { return p.id === myPlanId(); })) { openPlanId = myPlanId(); renderBoard(); window.scrollTo(0, 0); }
       else openGoalsModal();
     } else if (a === 'open') { openPlanId = t.dataset.id; renderBoard(); window.scrollTo(0, 0); }
-    else if (a === 'back') { openPlanId = null; renderBoard(); }
+    else if (a === 'back') { openPlanId = null; renderBoard(); window.scrollTo(0, 0); }
     else if (a === 'goals') openGoalsModal();
     else if (a === 'addq') openQuarterModal();
     else if (a === 'editq') openQuarterModal(t.dataset.id);
     else if (a === 'cm-send') {
-      const inp = document.getElementById('cwCmInput');
-      const text = inp.value.trim();
-      if (!text) return;
-      const r = await Store.addPlanComment(openPlanId, text);
-      if (r && r.ok === false) { alert('Could not send: ' + r.error); return; }
-      inp.value = ''; loadPlanComments(openPlanId);
+      busy(t, async function () {
+        const inp = document.getElementById('cwCmInput');
+        const text = inp.value.trim();
+        if (!text) return;
+        const r = await Store.addPlanComment(openPlanId, text);
+        if (r && r.ok === false) { alert('Could not send: ' + r.error); return; }
+        inp.value = ''; loadPlanComments(openPlanId);
+      });
     } else if (a === 'cm-del') {
       await Store.deletePlanComment(t.dataset.id); loadPlanComments(openPlanId);
     }
@@ -830,7 +860,7 @@
       const avg = avgOf(p.reviews);
       return '<div class="ps-head"><b>' + escapeHtml(p.name) + '</b><span>All reviews for this professor</span></div>' +
         '<div class="ps-sum"><div><div class="ps-big">' + avg.toFixed(1) + '</div><div class="ps-st">' + '★'.repeat(Math.round(avg)) + '</div></div>' +
-        '<div style="text-align:right"><div class="ps-sm">' + plural(p.reviews.length, 'review') + '</div><div class="ps-sm">' + plural(Object.keys(classes).length, 'class') + '</div></div></div>' +
+        '<div style="text-align:right"><div class="ps-sm">' + plural(p.reviews.length, 'review') + '</div><div class="ps-sm">' + (Object.keys(classes).length === 1 ? '1 class' : Object.keys(classes).length + ' classes') + '</div></div></div>' +
         recent(p.reviews).map(function (r) { return psReviewRow(r, true); }).join('');
     }
     const e = courseIndex()[psSel];
@@ -1048,22 +1078,47 @@
     }
   }
 
+  let navSeq = 0, cacheReady = false;
+  function dataSig() {
+    try { return JSON.stringify([posts, stories, profReviews, plans]); } catch (e) { return String(Math.random()); }
+  }
+  function renderPage(name) {
+    if (name === 'home') renderHome();
+    if (name === 'board') renderBoard();
+    if (name === 'stories') renderStories();
+    if (name === 'professors') renderProfessors();
+    if (name === 'my') renderMyPage();
+    if (name === 'timer') renderTimerPage();
+    if (name === 'schedule') renderSchedulePage();
+    if (name === 'search') {
+      const inp = document.getElementById('searchInput');
+      renderSearch(inp.value);
+      if (window.innerWidth >= 900) inp.focus();
+    }
+  }
+
   async function goPage(name, extra) {
+    const seq = ++navSeq;
     if (Store.guest && ['home', 'board', 'stories', 'professors'].indexOf(name) < 0) {
+      try { history.replaceState(null, '', '#home'); } catch (e) {}
+      await goPage('home');
       showGuestPrompt();
-      if (location.hash !== '#home') location.hash = '#home'; else name = 'home';
       return;
     }
+    closeOverlays();
+    document.getElementById('shotMode').hidden = true;
     if (name === 'post' && extra) {
+      const known = posts.some(function (p) { return String(p.id) === String(extra); });
+      if (known) openPost(extra, true);
       await refreshCache();
-      openPost(extra, true);
+      if (seq !== navSeq) return;
+      cacheReady = true;
+      if (!posts.some(function (p) { return String(p.id) === String(extra); })) { navTo('home'); return; }
+      openPost(extra, true, known);
       return;
     }
+    if (!document.getElementById('page-' + name)) name = 'home';
     document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
-    const page = document.getElementById('page-' + name);
-    if (!page) {
-      name = 'home';
-    }
     document.getElementById('page-' + name).classList.add('active');
     const tab = (name === 'timer' || name === 'schedule' || name === 'search' || name === 'alerts' || name === 'post') ? (name === 'timer' || name === 'schedule' ? 'my' : 'home') : name;
     document.querySelectorAll('.navbtn').forEach(function (b) { b.classList.toggle('active', b.dataset.page === tab); });
@@ -1083,22 +1138,22 @@
     } else {
       fab.hidden = true;
     }
+    if (name === 'board') activeBoard = extra || 'all';
+    window.scrollTo(0, 0);
 
+    // Show what we already have right away, then refresh from the server.
+    const before = dataSig();
+    if (cacheReady) renderPage(name);
     await refreshCache();
-    if (name === 'home') renderHome();
-    if (name === 'board') {
-      if (extra) activeBoard = extra;
-      renderBoard();
-    }
-    if (name === 'stories') renderStories();
-    if (name === 'professors') renderProfessors();
-    if (name === 'my') renderMyPage();
-    if (name === 'timer') renderTimerPage();
-    if (name === 'schedule') renderSchedulePage();
+    if (seq !== navSeq) return;
+    const changed = !cacheReady || dataSig() !== before;
+    cacheReady = true;
+    const page = document.getElementById('page-' + name);
+    const typing = document.activeElement && page.contains(document.activeElement) && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+    if (changed && !typing) renderPage(name);
     if (name === 'alerts') await renderAlerts();
     renderAside();
     await updateAlertDot();
-    document.getElementById('main').scrollTo(0, 0);
   }
 
   function renderAside() {
@@ -1143,7 +1198,7 @@
     box.innerHTML = chunks.join('') || emptyHTML('No matches', 'Try a different word.');
   }
 
-  function openPost(id, skipNav) {
+  function openPost(id, skipNav, keepScroll) {
     const p = posts.find(function (x) { return String(x.id) === String(id); });
     if (!p) return;
     openPostId = p.id;
@@ -1159,10 +1214,10 @@
     }
     document.getElementById('postDetailContent').innerHTML = `
       <div class="post-detail">
-        <div class="post-meta"><span class="post-tag">${escapeHtml(boardNames[p.board])}</span><span>·</span><span>Seattle Central</span><span>·</span><span>${escapeHtml(timeAgo(p.ts))}${p.edited ? ' · edited' : ''}</span>${sampleBadge(p)}</div>
+        <div class="post-meta"><span class="post-tag">${escapeHtml(boardNames[p.board] || p.board || 'Post')}</span><span>·</span><span>Seattle Central</span><span>·</span><span>${escapeHtml(timeAgo(p.ts))}${p.edited ? ' · edited' : ''}</span>${sampleBadge(p)}</div>
         <h2 class="post-title">${escapeHtml(p.title)}</h2>
         <p class="post-body">${escapeHtml(p.body)}</p>
-        <div class="post-foot">${likeBtnHTML(p)}<span>${comments.length} comments</span></div>
+        <div class="post-foot">${likeBtnHTML(p)}<span>${commentsLabel(p)}</span></div>
         <div class="post-actions">
           ${mine ? `<button class="text-action" type="button" data-edit-post>Edit</button>
           <button class="text-action danger" type="button" data-delete-post>Delete</button>` : `<button class="text-action" type="button" data-report="post" data-id="${escapeHtml(p.id)}">Report</button>
@@ -1209,32 +1264,53 @@
       </div>`;
 
     document.querySelectorAll('.page').forEach(function (pg) {
-      if (pg.classList.contains('active') && pg.id !== 'page-post') lastPage = pg.id.replace('page-', '');
+      if (pg.classList.contains('active') && pg.id !== 'page-post') {
+        lastPage = pg.id.replace('page-', '');
+        if (location.hash.indexOf('#post/') !== 0) lastHash = location.hash || '#home';
+      }
     });
     document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
     document.getElementById('page-post').classList.add('active');
     document.getElementById('fab').hidden = true;
-    if (!skipNav && location.hash !== '#post/' + p.id) location.hash = 'post/' + p.id;
+    document.querySelectorAll('.navbtn').forEach(function (b) { b.classList.toggle('active', b.dataset.page === 'home'); });
+    document.querySelectorAll('.dn-item').forEach(function (b) { b.classList.toggle('active', b.dataset.page === lastPage); });
+    if (!keepScroll) window.scrollTo(0, 0);
+    if (!skipNav && location.hash !== '#post/' + p.id) { skipHashFor = '#post/' + p.id; location.hash = 'post/' + p.id; }
 
-    document.getElementById('commentSendBtn').onclick = async function () {
-      const input = document.getElementById('commentInput');
-      const text = input.value.trim();
-      if (!text) return;
-      const cr = await Store.addComment(p.id, text);
-      if (cr && cr.ok === false) { alert('Could not post comment: ' + (cr.error || 'try again')); return; }
-      editingCommentIndex = null;
-      await refreshCache();
-      openPost(id, true);
+    const sendBtn = document.getElementById('commentSendBtn');
+    sendBtn.onclick = function () {
+      busy(sendBtn, async function () {
+        const input = document.getElementById('commentInput');
+        const text = input.value.trim();
+        if (!text) return;
+        const cr = await Store.addComment(p.id, text);
+        if (cr && cr.ok === false) { alert('Could not post comment: ' + (cr.error || 'try again')); return; }
+        editingCommentIndex = null;
+        await refreshCache();
+        openPost(id, true, true);
+      });
     };
+    document.getElementById('commentInput').onkeydown = function (e) { if (e.key === 'Enter' && !e.isComposing) sendBtn.click(); };
   }
 
+  const BOARD_HINTS = {
+    events: { t: 'What class do you need help with, or what can you tutor?', b: 'Class, times that work for you, online or on campus…' },
+    confess: { t: 'What are you sharing? (e.g. MATH 151 study guide)', b: 'Describe your notes, study guide, or practice test. You can paste a link to the file.' }
+  };
+  function syncBoardHint() {
+    const h = BOARD_HINTS[document.getElementById('modalBoard').value];
+    document.getElementById('modalTitleInput').placeholder = h ? h.t : 'What’s on your mind?';
+    document.getElementById('modalBody').placeholder = h ? h.b : 'Share details…';
+  }
+  document.getElementById('modalBoard').addEventListener('change', syncBoardHint);
   function openModal(boardPreset) {
     editingPostId = null;
     document.getElementById('modalTitle').textContent = 'New post';
     document.getElementById('modalPost').textContent = 'Post anonymously';
-    if (boardPreset && boardPreset !== 'all') document.getElementById('modalBoard').value = boardPreset;
+    document.getElementById('modalBoard').value = (boardPreset && boardNames[boardPreset]) ? boardPreset : 'free';
     document.getElementById('modalTitleInput').value = '';
     document.getElementById('modalBody').value = '';
+    syncBoardHint();
     document.getElementById('modalOverlay').classList.add('show');
   }
 
@@ -1793,7 +1869,10 @@
   });
   document.getElementById('searchBtn').onclick = function () { navTo('search'); };
   document.getElementById('alertsBtn').onclick = function () { navTo('alerts'); };
-  document.getElementById('postBackBtn').onclick = function () { navTo(lastPage || 'home'); };
+  document.getElementById('postBackBtn').onclick = function () {
+    const h = lastHash || '#home';
+    if (location.hash !== h) location.hash = h; else { const hp = hashPage(); goPage(hp.name, hp.extra); }
+  };
   document.getElementById('asideShareBtn').onclick = openStoryModal;
 
   document.getElementById('fab').onclick = function () {
@@ -1819,7 +1898,11 @@
       return;
     }
     const pill = e.target.closest('[data-board-filter]');
-    if (pill) { activeBoard = pill.dataset.boardFilter; openPlanId = null; renderBoard(); return; }
+    if (pill) {
+      activeBoard = pill.dataset.boardFilter; openPlanId = null;
+      try { history.replaceState(null, '', activeBoard === 'all' ? '#board' : '#board/' + activeBoard); } catch (err) {}
+      renderBoard(); return;
+    }
     const save = e.target.closest('.story-save-btn');
     if (save) { Store.toggleSaveStory(save.dataset.storyId); renderStories(); return; }
     const storyC = e.target.closest('#storyComposer');
@@ -1841,7 +1924,10 @@
     const block = e.target.closest('[data-block]');
     if (block) {
       if (confirm('Hide all posts from this author on your account?')) {
-        Store.blockAuthorOf(block.dataset.block, block.dataset.id);
+        const k = block.dataset.block, bid = block.dataset.id;
+        const list = k === 'post' ? posts : k === 'story' ? stories : profReviews;
+        const item = list.find(function (x) { return String(x.id) === String(bid); });
+        Store.blockAuthorOf(k, bid, item && item.authorId);
         navTo(hashPage().name === 'post' ? 'home' : hashPage().name);
       }
     }
@@ -1858,7 +1944,7 @@
       const html = mine.length ? mine.map(function (p) {
         return `<button class="menu-item" type="button" data-post-id="${escapeHtml(p.id)}">
           <div><div style="font-weight:700;font-size:13.5px;">${escapeHtml(p.title)}</div>
-          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">${escapeHtml(boardNames[p.board])} · ${escapeHtml(timeAgo(p.ts))}</div></div>
+          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">${escapeHtml(boardNames[p.board] || p.board || 'Post')} · ${escapeHtml(timeAgo(p.ts))}</div></div>
           <span class="right">›</span></button>`;
       }).join('') : emptyHTML('No posts yet', 'Anything you post will show up here.');
       openMyModal('My posts (' + mine.length + ')', html);
@@ -1897,6 +1983,10 @@
     }
   }
 
+  function commentIdAt(i) {
+    const p = posts.find(function (x) { return String(x.id) === String(openPostId); });
+    return p && p.comments && p.comments[i] ? p.comments[i].id : null;
+  }
   document.getElementById('postDetailContent').addEventListener('click', async function (e) {
     if (openPostId == null) return;
     if (e.target.closest('[data-edit-post]')) { openEditPost(openPostId); return; }
@@ -1907,25 +1997,28 @@
       return;
     }
     const editBtn = e.target.closest('[data-edit-comment]');
-    if (editBtn) { editingCommentIndex = Number(editBtn.dataset.editComment); openPost(openPostId, true); return; }
+    if (editBtn) { editingCommentIndex = Number(editBtn.dataset.editComment); openPost(openPostId, true, true); return; }
     const delBtn = e.target.closest('[data-delete-comment]');
     if (delBtn) {
       if (!confirm('Delete this comment?')) return;
-      await Store.deleteComment(openPostId, Number(delBtn.dataset.deleteComment));
+      const di = Number(delBtn.dataset.deleteComment);
+      await Store.deleteComment(openPostId, di, commentIdAt(di));
       await refreshCache();
-      openPost(openPostId, true);
+      openPost(openPostId, true, true);
       return;
     }
     const saveBtn = e.target.closest('[data-save-comment]');
     if (saveBtn) {
       const input = document.getElementById('commentEditInput');
-      await Store.updateComment(openPostId, Number(saveBtn.dataset.saveComment), input.value.trim());
+      const si = Number(saveBtn.dataset.saveComment);
+      if (!input.value.trim()) { input.focus(); return; }
+      await Store.updateComment(openPostId, si, input.value.trim(), commentIdAt(si));
       editingCommentIndex = null;
       await refreshCache();
-      openPost(openPostId, true);
+      openPost(openPostId, true, true);
       return;
     }
-    if (e.target.closest('[data-cancel-comment]')) { editingCommentIndex = null; openPost(openPostId, true); }
+    if (e.target.closest('[data-cancel-comment]')) { editingCommentIndex = null; openPost(openPostId, true, true); }
   });
 
   document.getElementById('modalCancel').onclick = function () {
@@ -1935,13 +2028,15 @@
   document.getElementById('modalOverlay').addEventListener('click', function (e) {
     if (e.target === e.currentTarget) { editingPostId = null; e.currentTarget.classList.remove('show'); }
   });
-  document.getElementById('modalPost').onclick = async function () {
+  document.getElementById('modalPost').onclick = function () { busy(this, submitPost); };
+  async function submitPost() {
     const board = document.getElementById('modalBoard').value;
     const title = document.getElementById('modalTitleInput').value.trim();
     const body = document.getElementById('modalBody').value.trim();
     if (!title) { document.getElementById('modalTitleInput').focus(); return; }
     if (editingPostId != null) {
-      await Store.updatePost(editingPostId, { board: board, title: title, body: body || '(no description)' });
+      const ur = await Store.updatePost(editingPostId, { board: board, title: title, body: body || '(no description)' });
+      if (ur && ur.ok === false) { alert('Could not save: ' + ur.error); return; }
       const editedId = editingPostId;
       editingPostId = null;
       document.getElementById('modalOverlay').classList.remove('show');
@@ -1949,31 +2044,35 @@
       openPost(editedId, true);
       return;
     }
-    await Store.createPost({ board: board, title: title, body: body || '(no description)' });
+    const cr = await Store.createPost({ board: board, title: title, body: body || '(no description)' });
+    if (cr && cr.ok === false) { alert('Could not post: ' + cr.error); return; }
     document.getElementById('modalOverlay').classList.remove('show');
     activeBoard = board;
     navTo('board', board);
-  };
+  }
 
   document.getElementById('storyModalCancel').onclick = function () { document.getElementById('storyModalOverlay').classList.remove('show'); };
   document.getElementById('storyModalOverlay').addEventListener('click', function (e) { if (e.target === e.currentTarget) e.currentTarget.classList.remove('show'); });
-  document.getElementById('storyModalPost').onclick = async function () {
+  document.getElementById('storyModalPost').onclick = function () { busy(this, submitStory); };
+  async function submitStory() {
     const to = document.getElementById('storyTo').value.trim();
     if (!to) { document.getElementById('storyTo').focus(); return; }
-    await Store.createStory({
+    const sr = await Store.createStory({
       from: document.getElementById('storyFrom').value.trim() || 'Seattle Central',
       to: to,
       major: document.getElementById('storyMajor').value.trim() || 'Undeclared',
       gpa: document.getElementById('storyGpa').value.trim() || '—',
       text: document.getElementById('storyText').value.trim() || '(no story shared)'
     });
+    if (sr && sr.ok === false) { alert('Could not post: ' + sr.error); return; }
     document.getElementById('storyModalOverlay').classList.remove('show');
     navTo('stories');
-  };
+  }
 
   document.getElementById('profModalCancel').onclick = function () { document.getElementById('profModalOverlay').classList.remove('show'); };
   document.getElementById('profModalOverlay').addEventListener('click', function (e) { if (e.target === e.currentTarget) e.currentTarget.classList.remove('show'); });
-  document.getElementById('profModalPost').onclick = async function () {
+  document.getElementById('profModalPost').onclick = function () { busy(this, submitReview); };
+  async function submitReview() {
     const prof = canonicalProfName(document.getElementById('profRevName').value);
     if (!prof) { document.getElementById('profRevName').focus(); return; }
     if (!pkPicked) {
@@ -1981,7 +2080,7 @@
       document.getElementById('profClassErr').scrollIntoView({ block: 'center' });
       return;
     }
-    await Store.createReview({
+    const rr = await Store.createReview({
       prof: prof,
       course: (function () {
         const typedCode = document.getElementById('profRevCourse').value;
@@ -1995,16 +2094,21 @@
       rating: parseInt(document.getElementById('profRevRating').value, 10),
       text: document.getElementById('profRevText').value.trim() || '(no experience shared)'
     });
+    if (rr && rr.ok === false) { alert('Could not post: ' + rr.error); return; }
     document.getElementById('profModalOverlay').classList.remove('show');
     navTo('professors');
-  };
+  }
 
   document.getElementById('reportCancel').onclick = function () { document.getElementById('reportModalOverlay').classList.remove('show'); };
-  document.getElementById('reportSubmit').onclick = async function () {
-    if (reportTarget) await Store.report(reportTarget.kind, reportTarget.id, document.getElementById('reportReason').value);
-    document.getElementById('reportModalOverlay').classList.remove('show');
-    navTo(hashPage().name === 'post' ? 'board' : hashPage().name);
+  document.getElementById('reportSubmit').onclick = function () {
+    busy(this, async function () {
+      if (reportTarget) await Store.report(reportTarget.kind, reportTarget.id, document.getElementById('reportReason').value);
+      document.getElementById('reportModalOverlay').classList.remove('show');
+      navTo(hashPage().name === 'post' ? 'board' : hashPage().name);
+    });
   };
+  document.getElementById('reportModalOverlay').addEventListener('click', function (e) { if (e.target === e.currentTarget) e.currentTarget.classList.remove('show'); });
+  document.getElementById('guestPromptOverlay').addEventListener('click', function (e) { if (e.target === e.currentTarget) e.currentTarget.classList.remove('show'); });
 
   document.getElementById('myModalClose').onclick = function () { document.getElementById('myModalOverlay').classList.remove('show'); };
   document.getElementById('myModalOverlay').addEventListener('click', function (e) { if (e.target === e.currentTarget) e.currentTarget.classList.remove('show'); });
@@ -2096,8 +2200,11 @@
     renderSchedule();
   };
 
+  let skipHashFor = null;
   window.addEventListener('hashchange', function () {
     if (document.getElementById('appRoot').hidden) return;
+    if (skipHashFor && location.hash === skipHashFor) { skipHashFor = null; return; }
+    skipHashFor = null;
     const h = hashPage();
     goPage(h.name, h.extra);
   });

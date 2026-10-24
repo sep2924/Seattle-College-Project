@@ -10,8 +10,8 @@
     courseplan: 'Course Plan Q&A',
     info: 'Info',
     dreams: 'Share Your Dream',
-    events: 'Events',
-    confess: 'Confess'
+    events: 'Tutoring',
+    confess: 'Share Study Materials'
   };
 
   function uid(prefix) {
@@ -419,6 +419,7 @@
         }
         if (r.data.session) {
           this.session = await this._profileFromSupabase(r.data.user);
+          await this._pullPrivate();
           return { ok: true };
         }
         return { ok: true, confirmEmail: true };
@@ -651,15 +652,16 @@
       return { ok: true };
     },
 
-    updateComment: async function (postId, idx, text) {
+    updateComment: async function (postId, idx, text, commentId) {
       if (this.mode === 'supabase') {
-        const ids = await this._commentIds(postId);
-        if (!ids[idx]) return;
+        const id = commentId || (await this._commentIds(postId))[idx];
+        if (!id) return;
         await this.supabase.from('comments').update({ body: text, edited: true })
-          .eq('id', ids[idx]).eq('author_id', this.session.userId);
+          .eq('id', id).eq('author_id', this.session.userId);
         return;
       }
       const post = this.db.posts.find(function (p) { return p.id === postId; });
+      if (post && commentId) { const j = (post.comments || []).findIndex(function (c) { return c.id === commentId; }); if (j >= 0) idx = j; }
       if (!post || !post.comments[idx]) return;
       if (post.comments[idx].authorId !== this.session.userId) return;
       post.comments[idx].text = text;
@@ -667,16 +669,17 @@
       this._persist();
     },
 
-    deleteComment: async function (postId, idx) {
+    deleteComment: async function (postId, idx, commentId) {
       if (this.mode === 'supabase') {
-        const ids = await this._commentIds(postId);
-        if (!ids[idx]) return;
+        const id = commentId || (await this._commentIds(postId))[idx];
+        if (!id) return;
         await this.supabase.from('comments').delete()
-          .eq('id', ids[idx]).eq('author_id', this.session.userId);
+          .eq('id', id).eq('author_id', this.session.userId);
         return;
       }
       const post = this.db.posts.find(function (p) { return p.id === postId; });
       if (!post) return;
+      if (commentId) { const j = (post.comments || []).findIndex(function (c) { return c.id === commentId; }); if (j >= 0) idx = j; }
       const c = post.comments[idx];
       if (!c) return;
       if (c.authorId !== this.session.userId) return;
@@ -830,7 +833,7 @@
       const i = p.savedStoryIds.indexOf(id);
       if (i >= 0) p.savedStoryIds.splice(i, 1);
       else p.savedStoryIds.push(id);
-      this._persist();
+      this.savePrivate();
     },
 
     report: async function (kind, id, reason) {
@@ -855,12 +858,13 @@
         const p = this.getPrivate();
         if (p.hiddenPostIds.indexOf(id) < 0) p.hiddenPostIds.push(id);
       }
-      this._persist();
+      this.savePrivate();
     },
 
-    blockAuthorOf: function (kind, id) {
-      let authorId = null;
-      if (kind === 'post') {
+    blockAuthorOf: function (kind, id, knownAuthorId) {
+      let authorId = knownAuthorId || null;
+      if (authorId) { /* already known from the page */ }
+      else if (kind === 'post') {
         const p = this.db.posts.find(function (x) { return x.id === id; });
         authorId = p && p.authorId;
       } else if (kind === 'story') {
@@ -873,7 +877,7 @@
       if (!authorId || authorId === this.session.userId) return;
       const p = this.getPrivate();
       if (p.blockedUserIds.indexOf(authorId) < 0) p.blockedUserIds.push(authorId);
-      this._persist();
+      this.savePrivate();
     },
 
     notifications: async function () {
