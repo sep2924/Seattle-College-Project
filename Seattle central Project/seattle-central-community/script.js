@@ -1879,7 +1879,7 @@
     const name = hashPage().name;
     if (name === 'stories') openStoryModal();
     else if (name === 'professors') openProfModal();
-    else openModal(activeBoard);
+    else openModal(name === 'board' ? activeBoard : 'free');
   };
 
   document.getElementById('main').addEventListener('click', function (e) {
@@ -1892,7 +1892,7 @@
     const empty = e.target.closest('[data-empty-action]');
     if (empty) {
       const a = empty.dataset.emptyAction;
-      if (a === 'compose') openModal(activeBoard);
+      if (a === 'compose') openModal(hashPage().name === 'board' ? activeBoard : 'free');
       if (a === 'story') openStoryModal();
       if (a === 'review') openProfModal();
       return;
