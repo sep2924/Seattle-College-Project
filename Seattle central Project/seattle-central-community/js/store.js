@@ -26,7 +26,7 @@
 
   function isSchoolEmail(email) {
     const d = emailDomain(email);
-    return CONFIG.allowedEmailDomains.some(function (allowed) {
+    return (CONFIG.allowedEmailDomains || ['seattlecolleges.edu', 'seattlecentral.edu']).some(function (allowed) {
       return d === allowed || d.endsWith('.' + allowed);
     });
   }

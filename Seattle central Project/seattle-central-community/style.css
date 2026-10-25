@@ -973,3 +973,10 @@
 @media (min-width: 1300px){
   .app{ grid-template-columns: 260px minmax(0, 1fr) 340px; }
 }
+
+/* sign up: school email notice */
+.school-note{ background:#E6ECF8; border:1px solid #C9D5EE; border-radius:10px; padding:10px 12px; font-size:13px; line-height:1.5; color:#12347A; margin:0 0 4px; }
+.school-note b{ display:block; margin-bottom:2px; }
+.school-note[hidden], .school-hint[hidden]{ display:none; }
+.school-hint{ font-size:12.5px; line-height:1.45; color:#9A6210; background:#FFF2DE; border-radius:8px; padding:7px 10px; margin-top:6px; }
+.mode-banner[hidden]{ display:none; }

@@ -30,7 +30,7 @@
 
   const pulseFeed = [
     'Welcome to Seattle Central Community',
-    'Posts are nicknamed, not legal names — be kind',
+    'Posts are anonymous — be kind',
     'Sample cards are labeled until classmates start posting'
   ];
 
@@ -1715,7 +1715,7 @@
 
   const onboardCopy = [
     { t: 'A campus feed, not a group chat', p: 'Boards, transfer stories, and professor reviews for Seattle Central students. Unofficial and student-run.' },
-    { t: 'Nickname, not legal name', p: 'Use any email to join. Comments show your nickname. Be kind — report anything that feels unsafe.' },
+    { t: 'Fully anonymous', p: 'Please join with your school email. Posts and comments never show your name, nickname, or email. Be kind — report anything that feels unsafe.' },
     { t: 'Post where it belongs', p: 'Write posts on Boards, stories on Transfers, reviews on Profs. Your timer and schedule stay private on My Page.' }
   ];
 
@@ -1745,6 +1745,7 @@
       ? 'Demo mode: data stays in this browser until you add Supabase keys in js/config.js. Classmates on other phones will not see your posts yet.'
       : 'Live mode: posts are shared with signed-in Seattle Central students.';
     document.getElementById('modeBanner').className = 'mode-banner ' + (demo ? 'warn' : 'ok');
+    document.getElementById('modeBanner').hidden = !demo;
   }
 
   function showEntry() {
@@ -1825,11 +1826,20 @@
     document.getElementById('confirmRow').hidden = !signup;
     document.getElementById('authSubmit').textContent = signup ? 'Create account' : 'Log in';
     document.getElementById('authLede').textContent = signup
-      ? 'Use a nickname, never your legal name. Posts are public to signed-in classmates.'
+      ? 'Posts and comments are anonymous. Signed-in students can read everything, and guests can read some recent posts.'
       : 'Welcome back. Log in with your email.';
     document.getElementById('authPassword').autocomplete = signup ? 'new-password' : 'current-password';
     document.getElementById('authError').textContent = '';
+    document.getElementById('schoolNote').hidden = !signup;
+    syncSchoolHint();
   }
+  // Encourage (not require) a school email when signing up.
+  function syncSchoolHint() {
+    const v = document.getElementById('authEmail').value.trim();
+    const show = authMode === 'signup' && /@[^@\s]+\.[^@\s]+$/.test(v) && !Store.isSchoolEmail(v);
+    document.getElementById('schoolHint').hidden = !show;
+  }
+  document.getElementById('authEmail').addEventListener('input', syncSchoolHint);
   document.getElementById('tabLogin').onclick = function () { setAuthMode('login'); };
   document.getElementById('tabSignup').onclick = function () { setAuthMode('signup'); };
 
@@ -1977,9 +1987,9 @@
         <button class="menu-item" type="button" data-notif="notifyComments">Comments on my posts <span class="right">${s.notifyComments ? 'On ✓' : 'Off'}</span></button>
         <button class="menu-item" type="button" data-notif="notifyReplies">Replies to my comments <span class="right">${s.notifyReplies ? 'On ✓' : 'Off'}</span></button>`);
     } else if (key === 'verify') {
-      openMyModal('Email', `<p class="aside-copy">Signed in as ${escapeHtml(user.email)}. Your nickname is what classmates see.</p>`);
+      openMyModal('Email', `<p class="aside-copy">Signed in as ${escapeHtml(user.email)}. Your email and nickname are never shown to other students.</p>`);
     } else if (key === 'about') {
-      openMyModal('About this app', `<p class="aside-copy">Seattle Central Community is an unofficial, student-run space for anonymous (nicknamed) posts, transfer stories, and professor reviews. It is not affiliated with Seattle Central College administration.</p>`);
+      openMyModal('About this app', `<p class="aside-copy">Seattle Central Community is an unofficial, student-run space for anonymous posts, transfer stories, and professor reviews. It is not affiliated with Seattle Central College administration.</p>`);
     }
   }
 
