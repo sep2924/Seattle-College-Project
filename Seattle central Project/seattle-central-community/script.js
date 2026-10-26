@@ -1728,7 +1728,35 @@
     document.getElementById('onboardNext').textContent = onboardStep === 2 ? 'Continue' : 'Next';
   }
 
+  // Welcome page for visitors who are not logged in.
+  function showLanding() {
+    document.getElementById('onboardGate').hidden = true;
+    document.getElementById('authGate').hidden = true;
+    document.getElementById('appRoot').hidden = true;
+    document.getElementById('guestPromptOverlay').classList.remove('show');
+    document.getElementById('landingPage').hidden = false;
+    document.title = 'Seattle Central Community: get involved';
+    window.scrollTo(0, 0);
+    document.getElementById('landingPage').scrollTop = 0;
+  }
+  function hideLanding() {
+    document.getElementById('landingPage').hidden = true;
+    document.title = 'Seattle Central Community';
+  }
+  document.getElementById('landingPage').addEventListener('click', function (e) {
+    const b = e.target.closest('[data-landing]');
+    if (!b) return;
+    const a = b.dataset.landing;
+    if (a === 'guest') {
+      try { sessionStorage.setItem('scc_browsing', '1'); } catch (err) {}
+      hideLanding(); showEntry();
+    } else {
+      hideLanding(); openAuth(a);
+    }
+  });
+
   function showApp() {
+    hideLanding();
     document.getElementById('onboardGate').hidden = true;
     document.getElementById('authGate').hidden = true;
     document.getElementById('guestBar').hidden = !Store.guest;
@@ -1738,6 +1766,7 @@
   }
 
   function showAuth() {
+    hideLanding();
     document.getElementById('onboardGate').hidden = true;
     document.getElementById('authGate').hidden = false;
     document.getElementById('appRoot').hidden = true;
@@ -1758,7 +1787,11 @@
     showAuth();
     setAuthMode(mode);
   }
-  document.getElementById('authBack').onclick = function (e) { e.preventDefault(); showEntry(); };
+  document.getElementById('authBack').onclick = function (e) {
+    e.preventDefault();
+    try { sessionStorage.setItem('scc_browsing', '1'); } catch (err) {}
+    showEntry();
+  };
 
   function showGuestPrompt() {
     document.getElementById('guestPromptOverlay').classList.add('show');
@@ -1795,13 +1828,14 @@
 
   async function boot() {
     await Store.init();
-    const flagged = localStorage.getItem('scc_onboard_done');
-    if (!flagged) {
-      showOnboard();
-      return;
-    }
+    try { localStorage.setItem('scc_onboard_done', '1'); } catch (e) {}
     if (!Store.currentUser()) {
-      showEntry();
+      // Shared links (like a post) open straight in guest mode; otherwise show the welcome page.
+      let browsing = false;
+      try { browsing = sessionStorage.getItem('scc_browsing') === '1'; } catch (e) {}
+      const h = hashPage().name;
+      if (browsing || (h !== 'home' && location.hash)) showEntry();
+      else showLanding();
       return;
     }
     showApp();
@@ -1979,8 +2013,8 @@
         if (tInterval) { clearInterval(tInterval); tInterval = null; }
         tSession = 0;
         posts = []; stories = []; profReviews = []; plans = []; cacheReady = false;
-        try { history.replaceState(null, '', '#home'); } catch (e) {}
-        showEntry();
+        try { sessionStorage.removeItem('scc_browsing'); history.replaceState(null, '', location.pathname); } catch (e) {}
+        showLanding();
         showToast('Your account was deleted.');
       });
     };
@@ -1990,7 +2024,11 @@
   function handleMy(key) {
     const user = Store.currentUser();
     if (key === 'signout') {
-      Store.signOut().then(showEntry);
+      Store.signOut().then(function () {
+        try { sessionStorage.removeItem('scc_browsing'); history.replaceState(null, '', location.pathname); } catch (e) {}
+        posts = []; stories = []; profReviews = []; plans = []; cacheReady = false;
+        showLanding();
+      });
       return;
     }
     if (key === 'delete') { openDeleteAccount(); return; }

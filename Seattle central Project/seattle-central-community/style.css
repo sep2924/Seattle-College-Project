@@ -988,3 +988,57 @@
 .btn-danger-solid:disabled{ background:#E9B7B1; cursor:not-allowed; }
 .toast{ position:fixed; left:50%; bottom:calc(var(--nav-h) + 20px); transform:translateX(-50%); z-index:400; background:var(--ink); color:#fff; font-size:14px; font-weight:600; padding:11px 18px; border-radius:999px; box-shadow:0 8px 24px rgba(0,0,0,.2); transition:opacity .4s ease; max-width:calc(100% - 32px); text-align:center; }
 .toast.out{ opacity:0; }
+
+/* ===== Welcome page (logged-out visitors) ===== */
+.landing{ position:fixed; inset:0; z-index:180; overflow-y:auto; background:#F6F8FC; color:var(--ink); font-family:var(--font-body); -webkit-overflow-scrolling:touch; }
+.landing[hidden]{ display:none; }
+.ld-nav{ max-width:1100px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; padding:16px 18px; gap:10px; }
+.ld-name-s{ display:none; }
+.ld-nav-btns{ display:flex; align-items:center; gap:6px; }
+.ld-btn{ border:0; background:var(--mint); color:#fff; font-family:var(--font-body); font-weight:700; font-size:15px; padding:13px 22px; border-radius:999px; cursor:pointer; box-shadow:0 8px 20px rgba(30,76,162,.25); transition:transform .15s ease; }
+.ld-btn:hover{ transform:translateY(-1px); }
+.ld-btn-sm{ font-size:13.5px; padding:9px 16px; box-shadow:none; }
+.ld-link{ border:0; background:none; color:#1E4CA2; font-family:var(--font-body); font-weight:700; font-size:14px; padding:9px 10px; cursor:pointer; }
+.ld-hero{ max-width:1100px; margin:0 auto; padding:20px 18px 8px; display:grid; gap:22px; }
+.ld-tag{ display:inline-block; background:var(--mint-soft); color:#1E4CA2; font-size:12px; font-weight:700; border-radius:999px; padding:4px 11px; margin-bottom:12px; }
+.ld-title{ font-family:var(--font-display); font-size:36px; line-height:1.08; letter-spacing:-0.03em; margin:0; }
+.ld-title span{ color:#1E4CA2; }
+.ld-sub{ font-size:16px; line-height:1.55; color:var(--ink-soft); margin:12px 0 18px; max-width:440px; }
+.ld-ctas{ display:flex; flex-direction:column; align-items:stretch; gap:6px; }
+.ld-bubbles{ display:flex; flex-direction:column; gap:10px; }
+.ld-bub{ max-width:84%; border-radius:18px; padding:11px 14px; font-size:14.5px; font-weight:600; line-height:1.4; box-shadow:0 6px 16px rgba(20,35,74,.07); }
+.ld-bub small{ display:block; font-size:11.5px; font-weight:600; margin-top:3px; opacity:.75; }
+.ld-bub.b1{ align-self:flex-start; background:#fff; border:1px solid var(--line); border-bottom-left-radius:5px; transform:rotate(-1.5deg); }
+.ld-bub.b2{ align-self:flex-end; background:#1E4CA2; color:#fff; border-bottom-right-radius:5px; transform:rotate(1deg); }
+.ld-bub.b3{ align-self:flex-start; background:#FFF2DE; border-bottom-left-radius:5px; transform:rotate(-1deg); }
+.ld-notes{ max-width:1100px; margin:0 auto; padding:22px 18px 18px; display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px; }
+.ld-note{ padding:14px; border-radius:4px; box-shadow:0 4px 10px rgba(0,0,0,.08); }
+.ld-note h3{ font-family:var(--font-display); font-size:15px; margin:0 0 4px; }
+.ld-note p{ font-size:13px; line-height:1.45; margin:0; color:#2E3340; }
+.ld-ic{ font-size:18px; margin-bottom:6px; }
+.ld-note.n1{ background:#FFF59D; transform:rotate(-2deg); }
+.ld-note.n2{ background:#C9E4FF; transform:rotate(1.5deg); }
+.ld-note.n3{ background:#FFD1DC; transform:rotate(-1deg); }
+.ld-note.n4{ background:#CFF2D9; transform:rotate(2deg); }
+.ld-foot{ max-width:1100px; margin:0 auto; padding:10px 18px 28px; text-align:center; font-size:12px; color:var(--ink-soft); }
+.ld-foot a{ color:#1E4CA2; }
+.ld-link, .ld-btn{ white-space:nowrap; }
+.ld-nav .brand{ min-width:0; }
+@media (max-width: 480px){
+  .ld-name{ display:none; } .ld-name-s{ display:inline; }
+}
+@media (max-width: 360px){
+  .ld-title{ font-size:31px; }
+  .ld-nav{ padding:14px 12px; }
+}
+@media (min-width: 760px){
+  .ld-nav{ padding:20px 32px; }
+  .ld-hero{ grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); align-items:center; gap:40px; padding:9vh 32px 24px; }
+  .ld-bub{ font-size:15.5px; padding:13px 16px; }
+  .ld-title{ font-size:50px; }
+  .ld-sub{ font-size:17px; }
+  .ld-ctas{ flex-direction:row; align-items:center; gap:10px; }
+  .ld-notes{ grid-template-columns:repeat(4, minmax(0,1fr)); gap:20px; padding:36px 32px 28px; }
+  .ld-note{ padding:18px; }
+  .ld-note h3{ font-size:16px; }
+}
