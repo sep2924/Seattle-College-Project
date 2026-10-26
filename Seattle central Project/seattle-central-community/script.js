@@ -990,6 +990,7 @@
         <a class="menu-item" href="privacy.html">Privacy <span class="right">›</span></a>
         <button class="menu-item" type="button" data-my="about">About this app <span class="right">›</span></button>
         <button class="menu-item" type="button" data-my="signout">Sign out <span class="right">›</span></button>
+        <button class="menu-item menu-danger" type="button" data-my="delete">Delete account <span class="right">›</span></button>
       </div>`;
   }
 
@@ -1943,12 +1944,56 @@
     }
   });
 
+  function showToast(msg) {
+    const t = document.createElement('div');
+    t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function () { t.classList.add('out'); }, 3200);
+    setTimeout(function () { t.remove(); }, 3700);
+  }
+  function openDeleteAccount() {
+    const o = cwModal(
+      '<h3>Delete your account?</h3>' +
+      '<p class="aside-copy" style="margin-bottom:6px">This deletes everything, forever. It cannot be undone:</p>' +
+      '<ul class="del-list"><li>Your account, email, and nickname</li><li>Your posts, comments, likes, stories, and reviews</li>' +
+      '<li>Your Course work plan and its comments</li><li>Your timer, schedule, and saved stories</li></ul>' +
+      '<label for="delConfirm">Type DELETE to confirm</label>' +
+      '<input type="text" id="delConfirm" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="DELETE">' +
+      '<p class="form-error" id="delErr"></p>' +
+      '<div class="modal-actions" style="margin-top:8px"><button class="btn btn-ghost" type="button" id="delCancel">Cancel</button>' +
+      '<button class="btn btn-danger-solid" type="button" id="delGo" disabled>Delete forever</button></div>');
+    const inp = o.querySelector('#delConfirm'), go = o.querySelector('#delGo');
+    inp.addEventListener('input', function () { go.disabled = inp.value.trim().toUpperCase() !== 'DELETE'; });
+    o.querySelector('#delCancel').onclick = function () { o.remove(); };
+    go.onclick = function () {
+      if (inp.value.trim().toUpperCase() !== 'DELETE') return;
+      busy(go, async function () {
+        go.textContent = 'Deleting…';
+        const r = await Store.deleteAccount();
+        if (!r || r.ok === false) {
+          go.textContent = 'Delete forever';
+          o.querySelector('#delErr').textContent = 'Could not delete your account: ' + ((r && r.error) || 'please try again.');
+          return;
+        }
+        o.remove();
+        if (tInterval) { clearInterval(tInterval); tInterval = null; }
+        tSession = 0;
+        posts = []; stories = []; profReviews = []; plans = []; cacheReady = false;
+        try { history.replaceState(null, '', '#home'); } catch (e) {}
+        showEntry();
+        showToast('Your account was deleted.');
+      });
+    };
+    setTimeout(function () { inp.focus(); }, 50);
+  }
+
   function handleMy(key) {
     const user = Store.currentUser();
     if (key === 'signout') {
       Store.signOut().then(showEntry);
       return;
     }
+    if (key === 'delete') { openDeleteAccount(); return; }
     if (key === 'posts') {
       const mine = posts.filter(function (p) { return p.authorId === user.userId; });
       const html = mine.length ? mine.map(function (p) {

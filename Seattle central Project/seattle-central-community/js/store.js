@@ -828,6 +828,40 @@
       return { ok: true };
     },
 
+    // Delete the signed-in account and everything linked to it.
+    deleteAccount: async function () {
+      const user = this.session;
+      if (!user) return { ok: false, error: 'Please log in first.' };
+      const id = user.userId;
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.rpc('delete_my_account');
+        if (error) return { ok: false, error: error.message };
+        try { await this.supabase.auth.signOut(); } catch (e) {}
+      } else {
+        const db = this.db;
+        db.users = db.users.filter(function (u) { return u.id !== id; });
+        db.posts = db.posts.filter(function (p) { return p.authorId !== id; });
+        db.posts.forEach(function (p) {
+          p.comments = (p.comments || []).filter(function (c) { return c.authorId !== id; });
+          if (p.likedBy && p.likedBy.indexOf(id) >= 0) {
+            p.likedBy = p.likedBy.filter(function (x) { return x !== id; });
+            p.likes = Math.max(0, (p.likes || 0) - 1);
+          }
+        });
+        db.stories = db.stories.filter(function (s) { return s.authorId !== id; });
+        db.reviews = db.reviews.filter(function (r) { return r.authorId !== id; });
+        db.coursePlans = (db.coursePlans || []).filter(function (p) { return p.id !== id; });
+        db.planComments = (db.planComments || []).filter(function (c) { return c.planId !== id && c.authorId !== id; });
+        db.notifications = db.notifications.filter(function (n) { return n.userId !== id; });
+        db.reports = db.reports.filter(function (r) { return r.reporterId !== id; });
+      }
+      delete this.privateMap[id];
+      this.session = null;
+      this._cloudOk = undefined;
+      this._persist();
+      return { ok: true };
+    },
+
     toggleSaveStory: function (id) {
       const p = this.getPrivate();
       const i = p.savedStoryIds.indexOf(id);
