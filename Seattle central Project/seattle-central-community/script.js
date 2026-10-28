@@ -1102,7 +1102,7 @@
         <span class="composer-btn">Write a review</span>
       </button>
       <div class="prof-list" id="profList">
-        ${profReviews.map(profFullHTML).join('') || emptyHTML('No reviews yet', 'Be the first to review a professor.', 'Write a review', 'review')}
+        ${profReviews.map(function (r) { return profFullHTML(r); }).join('') || emptyHTML('No reviews yet', 'Be the first to review a professor.', 'Write a review', 'review')}
       </div>${guestFoot()}`;
     renderProfSearch();
   }
@@ -1558,7 +1558,7 @@
     const chunks = [];
     if (res.posts.length) chunks.push('<h3 class="search-h">Posts</h3>' + res.posts.map(postHTML).join(''));
     if (res.stories.length) chunks.push('<h3 class="search-h">Stories</h3>' + res.stories.map(storyFullHTML).join(''));
-    if (res.reviews.length) chunks.push('<h3 class="search-h">Reviews</h3>' + res.reviews.map(profFullHTML).join(''));
+    if (res.reviews.length) chunks.push('<h3 class="search-h">Reviews</h3>' + res.reviews.map(function (r) { return profFullHTML(r); }).join(''));
     box.innerHTML = chunks.join('') || emptyHTML('No matches', 'Try a different word.');
   }
 
