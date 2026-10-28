@@ -2339,6 +2339,8 @@
 
   async function boot() {
     await Store.init();
+    window.addEventListener('pagehide', function () { Store.flushPrivate(); });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') Store.flushPrivate(); });
     try { localStorage.setItem('scc_onboard_done', '1'); } catch (e) {}
     if (!Store.currentUser()) {
       // Shared links (like a post) open straight in guest mode; otherwise show the welcome page.

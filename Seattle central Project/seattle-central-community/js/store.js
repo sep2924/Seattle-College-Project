@@ -262,6 +262,11 @@
     },
 
     savePrivate: function () {
+      const id = this.session && this.session.userId;
+      if (id && this.privateMap[id]) {
+        this.privateMap[id]._savedAt = Date.now();
+        this._dirty = true;
+      }
       this._persist();
       this._pushPrivateSoon();
     },
@@ -275,8 +280,16 @@
         if (error) { this._cloudOk = false; return; }
         this._cloudOk = true;
         if (data && data.data && typeof data.data === 'object') {
-          this.privateMap[id] = Object.assign(defaultPrivate(), data.data);
-          writeJson(PRIVATE_KEY, this.privateMap);
+          const local = this.privateMap[id];
+          const localAt = (local && local._savedAt) || 0;
+          const cloudAt = data.data._savedAt || 0;
+          if (local && localAt > cloudAt) {
+            // This device has newer changes that never reached the account (e.g. refreshed too fast). Keep them and upload.
+            await this._pushPrivateNow();
+          } else {
+            this.privateMap[id] = Object.assign(defaultPrivate(), data.data);
+            writeJson(PRIVATE_KEY, this.privateMap);
+          }
         } else {
           this.getPrivate();
           await this._pushPrivateNow();
@@ -293,12 +306,20 @@
 
     _pushPrivateNow: async function () {
       if (this.mode !== 'supabase' || !this.session || this._cloudOk === false) return;
+      clearTimeout(this._pushT);
       try {
         const id = this.session.userId;
-        await this.supabase.from('user_data').upsert({
+        const { error } = await this.supabase.from('user_data').upsert({
           user_id: id, data: this.privateMap[id] || defaultPrivate(), updated_at: new Date().toISOString()
         }, { onConflict: 'user_id' });
-      } catch (e) {}
+        if (error) { console.warn('Could not save to your account:', error.message); return; }
+        this._dirty = false;
+      } catch (e) { console.warn('Could not save to your account:', e && e.message); }
+    },
+
+    // Send any waiting change right away (used when the page is being closed or hidden).
+    flushPrivate: function () {
+      if (this._dirty) this._pushPrivateNow();
     },
 
     signInLocal: function (email, nickname, password) {
