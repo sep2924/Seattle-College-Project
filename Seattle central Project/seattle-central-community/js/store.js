@@ -134,8 +134,12 @@
   }
 
   function emptyDb() {
-    return { users: [], posts: [], stories: [], reviews: [], reports: [], notifications: [], seeded: false };
+    return { users: [], posts: [], stories: [], reviews: [], reports: [], notifications: [], reviewComments: [], courseLinks: [], linkVotes: [], seeded: false };
   }
+
+  // Course key: "MATH& 151" and "math 151" both become "MATH151".
+  function courseKey(code) { return String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+  function reviewCourseKey(course) { return courseKey(String(course || '').split(' · ')[0]); }
 
   function readJson(key, fallback) {
     try {
@@ -432,7 +436,7 @@
 
     _visible: function (authorId, id, kind) {
       const p = this.getPrivate();
-      if (kind === 'post' && p.hiddenPostIds.indexOf(id) >= 0) return false;
+      if ((kind === 'post' || kind === 'review_comment' || kind === 'course_link') && p.hiddenPostIds.indexOf(id) >= 0) return false;
       if (authorId && p.blockedUserIds.indexOf(authorId) >= 0) return false;
       return true;
     },
@@ -538,7 +542,7 @@
           if (error) return [];
           return (data || []).map(function (r) {
             return { id: r.id, authorId: null, prof: r.prof_name, course: r.course, quarter: r.quarter, rating: r.rating,
-              text: r.body, ts: new Date(r.created_at).getTime(), isSample: false };
+              text: r.body, tags: r.tags || [], edited: !!r.edited, ts: new Date(r.created_at).getTime(), isSample: false };
           });
         }
         return this.db.reviews.slice().sort(function (a, b) { return b.ts - a.ts; }).slice(0, 10);
@@ -708,25 +712,307 @@
       return story;
     },
 
+    // One review per person for the same professor + class.
+    _dupReview: function (payload, exceptId) {
+      const me = this.session && this.session.userId;
+      const k = reviewCourseKey(payload.course), pn = String(payload.prof || '').trim().toLowerCase();
+      return this.db.reviews.find(function (r) {
+        return r.authorId === me && r.id !== exceptId && reviewCourseKey(r.course) === k && String(r.prof || '').trim().toLowerCase() === pn;
+      });
+    },
+
     createReview: async function (payload) {
       const user = this.session;
+      if (!user) return { ok: false, error: 'Please log in first.' };
+      const tags = (payload.tags || []).slice(0, 6);
       if (this.mode === 'supabase') {
-        const { error } = await this.supabase.from('prof_reviews').insert({
+        const row = {
           author_id: user.userId, prof_name: payload.prof, course: payload.course,
-          quarter: payload.quarter, rating: payload.rating, body: payload.text
-        });
-        return error ? { ok: false, error: error.message } : { ok: true };
+          quarter: payload.quarter, rating: payload.rating, body: payload.text, tags: tags
+        };
+        let r = await this.supabase.from('prof_reviews').insert(row).select('id').single();
+        if (r.error && /tags/i.test(r.error.message || '')) { delete row.tags; r = await this.supabase.from('prof_reviews').insert(row).select('id').single(); }
+        if (r.error) {
+          if (r.error.code === '23505') return { ok: false, duplicate: true, error: 'You already reviewed this professor for this class. Edit your review instead.' };
+          return { ok: false, error: r.error.message };
+        }
+        return { ok: true, id: r.data && r.data.id };
       }
+      if (this._dupReview(payload)) return { ok: false, duplicate: true, error: 'You already reviewed this professor for this class. Edit your review instead.' };
       const review = Object.assign({
         id: uid('rev'),
         authorId: user.userId,
         school: 'sccc',
         ts: now(),
         isSample: false
-      }, payload);
+      }, payload, { tags: tags });
       this.db.reviews.unshift(review);
       this._persist();
-      return review;
+      return { ok: true, id: review.id };
+    },
+
+    updateReview: async function (id, payload) {
+      const user = this.session;
+      if (!user) return { ok: false, error: 'Please log in first.' };
+      const tags = (payload.tags || []).slice(0, 6);
+      if (this.mode === 'supabase') {
+        const row = { prof_name: payload.prof, course: payload.course, quarter: payload.quarter,
+          rating: payload.rating, body: payload.text, tags: tags, edited: true };
+        let r = await this.supabase.from('prof_reviews').update(row).eq('id', id).eq('author_id', user.userId);
+        if (r.error && /tags|edited/i.test(r.error.message || '')) {
+          delete row.tags; delete row.edited;
+          r = await this.supabase.from('prof_reviews').update(row).eq('id', id).eq('author_id', user.userId);
+        }
+        if (r.error) {
+          if (r.error.code === '23505') return { ok: false, duplicate: true, error: 'You already reviewed this professor for this class.' };
+          return { ok: false, error: r.error.message };
+        }
+        return { ok: true, id: id };
+      }
+      const rev = this.db.reviews.find(function (r) { return r.id === id; });
+      if (!rev || rev.authorId !== user.userId) return { ok: false, error: 'You can only edit your own reviews.' };
+      if (this._dupReview(payload, id)) return { ok: false, duplicate: true, error: 'You already reviewed this professor for this class.' };
+      Object.assign(rev, { prof: payload.prof, course: payload.course, quarter: payload.quarter,
+        rating: payload.rating, text: payload.text, tags: tags, edited: true });
+      this._persist();
+      return { ok: true, id: id };
+    },
+
+    deleteReview: async function (id) {
+      const user = this.session;
+      if (!user) return { ok: false, error: 'Please log in first.' };
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.from('prof_reviews').delete().eq('id', id).eq('author_id', user.userId);
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
+      const rev = this.db.reviews.find(function (r) { return r.id === id; });
+      if (!rev || rev.authorId !== user.userId) return { ok: false, error: 'You can only delete your own reviews.' };
+      this.db.reviews = this.db.reviews.filter(function (r) { return r.id !== id; });
+      this.db.reviewComments = (this.db.reviewComments || []).filter(function (c) { return c.reviewId !== id; });
+      this.db.notifications = this.db.notifications.filter(function (n) { return n.reviewId !== id; });
+      this._persist();
+      return { ok: true };
+    },
+
+    // ---- Comments on reviews (anonymous) ----
+    listReviewComments: async function () {
+      if (this.mode === 'supabase') {
+        if (this.guest || !this.session) {
+          const { data, error } = await this.supabase.rpc('public_review_comments');
+          if (error) return [];
+          return (data || []).map(function (c) {
+            return { id: c.id, reviewId: c.review_id, authorId: null, who: c.who, text: c.body,
+              helpful: !!c.helpful, edited: !!c.edited, ts: new Date(c.created_at).getTime() };
+          });
+        }
+        const { data, error } = await this.supabase.from('review_comments').select('*').order('created_at', { ascending: true }).order('id', { ascending: true });
+        if (error) return [];
+        return (data || []).map(function (c) {
+          return { id: c.id, reviewId: c.review_id, authorId: c.author_id, text: c.body,
+            helpful: !!c.helpful, edited: !!c.edited, ts: new Date(c.created_at).getTime() };
+        }).filter(function (c) { return Store._visible(c.authorId, c.id, 'review_comment'); });
+      }
+      const self = this;
+      let list = (this.db.reviewComments || []).slice().sort(function (a, b) { return a.ts - b.ts; });
+      if (this.guest) {
+        const pub = {};
+        this.db.reviews.slice().sort(function (a, b) { return b.ts - a.ts; }).slice(0, 10).forEach(function (r) { pub[r.id] = r.authorId; });
+        const order = {};
+        return list.filter(function (c) { return pub.hasOwnProperty(c.reviewId); }).map(function (c) {
+          let who;
+          if (c.authorId === pub[c.reviewId]) who = 'Author';
+          else {
+            const o = order[c.reviewId] = order[c.reviewId] || { n: 0, m: {} };
+            if (!o.m[c.authorId]) o.m[c.authorId] = ++o.n;
+            who = 'Anonymous ' + o.m[c.authorId];
+          }
+          return { id: c.id, reviewId: c.reviewId, authorId: null, who: who, text: c.text, helpful: !!c.helpful, edited: !!c.edited, ts: c.ts };
+        });
+      }
+      return list.filter(function (c) { return self._visible(c.authorId, c.id, 'review_comment'); })
+        .map(function (c) { return Object.assign({}, c); });
+    },
+
+    addReviewComment: async function (reviewId, text) {
+      const user = this.session;
+      if (!user) return { ok: false, error: 'Please log in first.' };
+      text = String(text || '').trim().slice(0, 1000);
+      if (!text) return { ok: false, error: 'Write a comment first.' };
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.from('review_comments').insert({ review_id: reviewId, author_id: user.userId, body: text });
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
+      const rev = this.db.reviews.find(function (r) { return r.id === reviewId; });
+      if (!rev) return { ok: false, error: 'Review not found.' };
+      this.db.reviewComments = this.db.reviewComments || [];
+      this.db.reviewComments.push({ id: uid('rc'), reviewId: reviewId, authorId: user.userId, text: text, ts: now(), edited: false, helpful: false });
+      if (rev.authorId !== user.userId) {
+        this.db.notifications.unshift({ id: uid('n'), userId: rev.authorId, text: 'Someone commented on your review', ts: now(), read: false, reviewId: reviewId });
+      }
+      this._persist();
+      return { ok: true };
+    },
+
+    updateReviewComment: async function (id, text) {
+      const user = this.session;
+      text = String(text || '').trim().slice(0, 1000);
+      if (!user || !text) return { ok: false, error: 'Write a comment first.' };
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.from('review_comments').update({ body: text, edited: true }).eq('id', id).eq('author_id', user.userId);
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
+      const c = (this.db.reviewComments || []).find(function (x) { return x.id === id; });
+      if (!c || c.authorId !== user.userId) return { ok: false, error: 'You can only edit your own comments.' };
+      c.text = text; c.edited = true;
+      this._persist();
+      return { ok: true };
+    },
+
+    deleteReviewComment: async function (id) {
+      const user = this.session;
+      if (!user) return { ok: false };
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.from('review_comments').delete().eq('id', id).eq('author_id', user.userId);
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
+      const before = (this.db.reviewComments || []).length;
+      this.db.reviewComments = (this.db.reviewComments || []).filter(function (c) { return !(c.id === id && c.authorId === user.userId); });
+      this._persist();
+      return before === this.db.reviewComments.length ? { ok: false, error: 'You can only delete your own comments.' } : { ok: true };
+    },
+
+    // Only the review's author can mark one comment as the helpful answer.
+    markReviewCommentHelpful: async function (id, on) {
+      const user = this.session;
+      if (!user) return { ok: false, error: 'Please log in first.' };
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.rpc('mark_review_comment_helpful', { comment_id: id, on_off: !!on });
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
+      const list = this.db.reviewComments || [];
+      const c = list.find(function (x) { return x.id === id; });
+      const rev = c && this.db.reviews.find(function (r) { return r.id === c.reviewId; });
+      if (!rev || rev.authorId !== user.userId) return { ok: false, error: 'Only the review author can do this.' };
+      if (on && c.authorId === user.userId) return { ok: false, error: 'You cannot mark your own comment.' };
+      list.forEach(function (x) { if (x.reviewId === c.reviewId) x.helpful = false; });
+      if (on) c.helpful = true;
+      this._persist();
+      return { ok: true };
+    },
+
+    // ---- Class requirements added by students ("take FROM before TO"), confirmed by votes ----
+    listCourseLinks: async function () {
+      const me = this.session && !this.guest ? this.session.userId : null;
+      if (this.mode === 'supabase') {
+        if (!me) {
+          const { data, error } = await this.supabase.rpc('public_course_links');
+          if (error) return [];
+          return (data || []).map(function (l) {
+            return { id: l.id, fromKey: l.from_key, toKey: l.to_key, fromCode: l.from_code, toCode: l.to_code,
+              note: l.note || '', source: l.source_url || '', up: Number(l.up) || 0, down: Number(l.down) || 0,
+              myVote: 0, mine: false, ts: new Date(l.created_at).getTime() };
+          });
+        }
+        const lr = await this.supabase.from('course_links').select('*');
+        if (lr.error) return [];
+        const vr = await this.supabase.from('course_link_votes').select('*');
+        const votes = (vr.data || []);
+        return (lr.data || []).map(function (l) {
+          let up = 0, down = 0, mv = 0;
+          votes.forEach(function (v) {
+            if (v.link_id !== l.id) return;
+            if (v.vote > 0) up++; else down++;
+            if (v.user_id === me) mv = v.vote > 0 ? 1 : -1;
+          });
+          return { id: l.id, fromKey: l.from_key, toKey: l.to_key, fromCode: l.from_code, toCode: l.to_code,
+            note: l.note || '', source: l.source_url || '', up: up, down: down, myVote: mv,
+            mine: l.author_id === me, authorId: l.author_id, ts: new Date(l.created_at).getTime() };
+        }).filter(function (l) { return Store._visible(l.authorId, l.id, 'course_link'); });
+      }
+      const self = this;
+      const votes = this.db.linkVotes || [];
+      return (this.db.courseLinks || []).map(function (l) {
+        let up = 0, down = 0, mv = 0;
+        votes.forEach(function (v) {
+          if (v.linkId !== l.id) return;
+          if (v.vote > 0) up++; else down++;
+          if (me && v.userId === me) mv = v.vote > 0 ? 1 : -1;
+        });
+        return { id: l.id, fromKey: l.fromKey, toKey: l.toKey, fromCode: l.fromCode, toCode: l.toCode,
+          note: l.note || '', source: l.source || '', up: up, down: down, myVote: mv,
+          mine: !!me && l.authorId === me, authorId: me ? l.authorId : null, ts: l.ts };
+      }).filter(function (l) { return !me || self._visible(l.authorId, l.id, 'course_link'); });
+    },
+
+    addCourseLink: async function (p) {
+      const user = this.session;
+      if (!user) return { ok: false, error: 'Please log in first.' };
+      const fromKey = courseKey(p.fromCode), toKey = courseKey(p.toCode);
+      if (!/\d/.test(fromKey) || !/\d/.test(toKey)) return { ok: false, error: 'Please write a course code, like MATH 142.' };
+      if (fromKey === toKey) return { ok: false, error: 'A class cannot come before itself.' };
+      const note = String(p.note || '').trim().slice(0, 120);
+      let source = String(p.source || '').trim().slice(0, 300);
+      if (source && !/^https?:\/\/\S+$/i.test(source)) return { ok: false, error: 'The source link must start with http:// or https://' };
+      const existing = (await this.listCourseLinks()).find(function (l) {
+        return (l.fromKey === fromKey && l.toKey === toKey) || (l.fromKey === toKey && l.toKey === fromKey);
+      });
+      if (existing) {
+        const same = existing.fromKey === fromKey;
+        return { ok: false, duplicate: true, reverse: !same, link: existing,
+          error: same ? 'Someone already added this. You can vote on it instead.' : 'Someone already added the opposite order for these two classes. Vote "Not right" on it if it is wrong.' };
+      }
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.from('course_links').insert({
+          from_key: fromKey, to_key: toKey, from_code: String(p.fromCode).trim().slice(0, 20), to_code: String(p.toCode).trim().slice(0, 20),
+          note: note, source_url: source || null, author_id: user.userId
+        });
+        if (error) {
+          if (error.code === '23505') return { ok: false, duplicate: true, error: 'Someone already added this. You can vote on it instead.' };
+          return { ok: false, error: error.message };
+        }
+        return { ok: true };
+      }
+      this.db.courseLinks = this.db.courseLinks || [];
+      this.db.courseLinks.push({ id: uid('cl'), fromKey: fromKey, toKey: toKey, fromCode: String(p.fromCode).trim().slice(0, 20),
+        toCode: String(p.toCode).trim().slice(0, 20), note: note, source: source, authorId: user.userId, ts: now() });
+      this._persist();
+      return { ok: true };
+    },
+
+    // vote: 1 = Correct, -1 = Not right, 0 = take my vote back.
+    voteCourseLink: async function (linkId, vote) {
+      const user = this.session;
+      if (!user) return { ok: false, error: 'Please log in first.' };
+      vote = vote > 0 ? 1 : vote < 0 ? -1 : 0;
+      if (this.mode === 'supabase') {
+        let r;
+        if (!vote) r = await this.supabase.from('course_link_votes').delete().eq('link_id', linkId).eq('user_id', user.userId);
+        else r = await this.supabase.from('course_link_votes').upsert({ link_id: linkId, user_id: user.userId, vote: vote }, { onConflict: 'link_id,user_id' });
+        if (r.error) return { ok: false, error: /row-level|policy/i.test(r.error.message) ? 'You cannot vote on your own suggestion.' : r.error.message };
+        return { ok: true };
+      }
+      const link = (this.db.courseLinks || []).find(function (l) { return l.id === linkId; });
+      if (!link) return { ok: false, error: 'Not found.' };
+      if (link.authorId === user.userId) return { ok: false, error: 'You cannot vote on your own suggestion.' };
+      this.db.linkVotes = (this.db.linkVotes || []).filter(function (v) { return !(v.linkId === linkId && v.userId === user.userId); });
+      if (vote) this.db.linkVotes.push({ linkId: linkId, userId: user.userId, vote: vote });
+      this._persist();
+      return { ok: true };
+    },
+
+    deleteCourseLink: async function (linkId) {
+      const user = this.session;
+      if (!user) return { ok: false };
+      if (this.mode === 'supabase') {
+        const { error } = await this.supabase.from('course_links').delete().eq('id', linkId).eq('author_id', user.userId);
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
+      const link = (this.db.courseLinks || []).find(function (l) { return l.id === linkId; });
+      if (!link || link.authorId !== user.userId) return { ok: false, error: 'You can only delete your own suggestion.' };
+      this.db.courseLinks = this.db.courseLinks.filter(function (l) { return l.id !== linkId; });
+      this.db.linkVotes = (this.db.linkVotes || []).filter(function (v) { return v.linkId !== linkId; });
+      this._persist();
+      return { ok: true };
     },
 
     // ---- Course work plans (one per user) ----
@@ -849,7 +1135,14 @@
           }
         });
         db.stories = db.stories.filter(function (s) { return s.authorId !== id; });
+        const goneReviews = {};
+        db.reviews.forEach(function (r) { if (r.authorId === id) goneReviews[r.id] = 1; });
         db.reviews = db.reviews.filter(function (r) { return r.authorId !== id; });
+        db.reviewComments = (db.reviewComments || []).filter(function (c) { return c.authorId !== id && !goneReviews[c.reviewId]; });
+        const goneLinks = {};
+        (db.courseLinks || []).forEach(function (l) { if (l.authorId === id) goneLinks[l.id] = 1; });
+        db.courseLinks = (db.courseLinks || []).filter(function (l) { return l.authorId !== id; });
+        db.linkVotes = (db.linkVotes || []).filter(function (v) { return v.userId !== id && !goneLinks[v.linkId]; });
         db.coursePlans = (db.coursePlans || []).filter(function (p) { return p.id !== id; });
         db.planComments = (db.planComments || []).filter(function (c) { return c.planId !== id && c.authorId !== id; });
         db.notifications = db.notifications.filter(function (n) { return n.userId !== id; });
@@ -888,7 +1181,7 @@
           ts: now()
         });
       }
-      if (kind === 'post') {
+      if (kind === 'post' || kind === 'review_comment' || kind === 'course_link') {
         const p = this.getPrivate();
         if (p.hiddenPostIds.indexOf(id) < 0) p.hiddenPostIds.push(id);
       }
@@ -929,6 +1222,7 @@
             id: row.id,
             userId: row.user_id,
             postId: row.post_id,
+            reviewId: row.review_id || null,
             text: row.text,
             read: row.read,
             ts: new Date(row.created_at).getTime()
@@ -1017,10 +1311,14 @@
       quarter: row.quarter,
       rating: row.rating,
       text: row.body,
+      tags: Array.isArray(row.tags) ? row.tags : [],
+      edited: !!row.edited,
       ts: new Date(row.created_at).getTime(),
       isSample: row.is_sample
     };
   }
 
+  Store.courseKey = courseKey;
+  Store.reviewCourseKey = reviewCourseKey;
   global.SCCStore = Store;
 })(window);

@@ -27,6 +27,13 @@
   let pulseIndex = 0;
   let onboardStep = 0;
   let cache = { posts: [], stories: [], reviews: [] };
+  let reviewComments = [];
+  let courseLinks = [];
+  let classKey = null;
+  let pendingReview = null;
+  let rcEditing = null;
+  let editingReviewId = null;
+  const rvOpen = new Set();
 
   const pulseFeed = [
     'Welcome to Seattle Central Community',
@@ -157,6 +164,120 @@
     return '★'.repeat(full) + '☆'.repeat(5 - full);
   }
 
+  // ================= Review tags + comments on reviews =================
+  const REVIEW_TAGS = ['Would take again', 'Wouldn’t take again', 'Easy grader', 'Tough grader', 'Textbook needed',
+    'Heavy workload', 'Light workload', 'Online-friendly', 'Attendance matters'];
+  const TAG_OPPOSITE = {
+    'Would take again': 'Wouldn’t take again', 'Wouldn’t take again': 'Would take again',
+    'Easy grader': 'Tough grader', 'Tough grader': 'Easy grader',
+    'Heavy workload': 'Light workload', 'Light workload': 'Heavy workload'
+  };
+  const MAX_TAGS = 5;
+  function tagsHTML(r) {
+    const tags = (r.tags || []).filter(function (t) { return REVIEW_TAGS.indexOf(t) >= 0; });
+    if (!tags.length) return '';
+    return '<div class="rv-tags">' + tags.map(function (t) {
+      const neg = t === 'Wouldn’t take again' || t === 'Tough grader' || t === 'Heavy workload';
+      return '<span class="rv-tag' + (neg ? ' warn' : '') + '">' + escapeHtml(t) + '</span>';
+    }).join('') + '</div>';
+  }
+  function myId() { const u = Store.currentUser(); return u && !Store.guest ? u.userId : null; }
+  function isMineReview(r) { return !!(myId() && r && r.authorId === myId()); }
+  function reviewKey(r) { return codeKey(parseCourse(r.course).code); }
+  function courseOpenAttr(r) {
+    const k = reviewKey(r);
+    return k && k !== 'COURSE' && /\d/.test(k) ? k : '';
+  }
+  function attachComments() {
+    const by = {};
+    reviewComments.forEach(function (c) { (by[c.reviewId] = by[c.reviewId] || []).push(c); });
+    // Copies, so comments never get saved inside the review itself.
+    cache.reviews = profReviews = profReviews.map(function (r) { return Object.assign({}, r, { comments: by[r.id] || [] }); });
+  }
+  async function loadReviewComments() {
+    try { reviewComments = await Store.listReviewComments(); } catch (e) { reviewComments = []; }
+    attachComments();
+  }
+  function seenMap() { const a = account(); a.seenRc = a.seenRc || {}; return a.seenRc; }
+  function newCount(r) { return Math.max(0, (r.comments || []).length - (seenMap()[r.id] || 0)); }
+  function markSeen(r) {
+    if (!isMineReview(r)) return;
+    const n = (r.comments || []).length;
+    if (seenMap()[r.id] !== n) { seenMap()[r.id] = n; saveAccount(); }
+  }
+  function rcLabeler(r) {
+    const map = {}; let n = 0;
+    return function (c) {
+      if (c.who) return c.who;
+      if (c.authorId && c.authorId === r.authorId) return 'Author';
+      if (!map[c.authorId]) map[c.authorId] = ++n;
+      return 'Anonymous ' + map[c.authorId];
+    };
+  }
+  function rvInnerHTML(r) {
+    const id = String(r.id);
+    const list = r.comments || [];
+    const open = rvOpen.has(id);
+    const n = list.length;
+    let h = '<div class="rv-foot"><button type="button" class="rv-toggle" data-rv-toggle="' + escapeHtml(id) + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+      (n ? plural(n, 'comment') : 'Comment') + ' <span aria-hidden="true">' + (open ? '▴' : '▾') + '</span></button>' +
+      (isMineReview(r) && newCount(r) && !open ? '<span class="rv-new">' + newCount(r) + ' new</span>' : '') + '</div>';
+    if (!open) return h;
+    const me = myId();
+    const label = rcLabeler(r);
+    const iWrote = isMineReview(r);
+    h += '<div class="rv-thread">';
+    if (!n) h += '<p class="rv-none">No comments yet. Ask the reviewer a question.</p>';
+    list.forEach(function (c) {
+      const who = label(c);
+      const own = !!(me && c.authorId === me);
+      const av = who === 'Author' ? 'A' : (who.split(' ')[1] || '?');
+      h += '<div class="comment rc' + (c.helpful ? ' rc-helpful' : '') + '" data-rc="' + escapeHtml(c.id) + '"><div class="c-avatar">' + escapeHtml(av) + '</div><div class="c-body">' +
+        '<div class="c-name">' + escapeHtml(who) + (own ? ' (you)' : '') + (c.helpful ? ' <span class="rc-badge">✓ Helpful answer</span>' : '') + '</div>';
+      if (rcEditing === c.id && own) {
+        h += '<input type="text" class="c-edit-input" maxlength="1000" data-rc-input="' + escapeHtml(c.id) + '" value="' + escapeHtml(c.text) + '" aria-label="Edit your comment">' +
+          '<div class="comment-edit-actions"><button class="text-action" type="button" data-rc-save="' + escapeHtml(c.id) + '">Save</button>' +
+          '<button class="text-action" type="button" data-rc-cancel="' + escapeHtml(id) + '">Cancel</button></div>';
+      } else {
+        h += '<div class="c-text">' + escapeHtml(c.text) + '</div>' +
+          '<div class="c-time">' + escapeHtml(c.ts ? timeAgo(c.ts) : '') + (c.edited ? ' · edited' : '') + '</div>';
+        const acts = [];
+        if (own) {
+          acts.push('<button class="text-action" type="button" data-rc-edit="' + escapeHtml(c.id) + '">Edit</button>');
+          acts.push('<button class="text-action danger" type="button" data-rc-del="' + escapeHtml(c.id) + '">Delete</button>');
+        } else if (me) {
+          if (iWrote) acts.push('<button class="text-action rc-help-btn" type="button" data-rc-help="' + escapeHtml(c.id) + '">' + (c.helpful ? 'Unmark helpful' : '✓ Mark helpful') + '</button>');
+          acts.push('<button class="text-action" type="button" data-report="review_comment" data-id="' + escapeHtml(c.id) + '">Report</button>');
+          acts.push('<button class="text-action danger" type="button" data-block="review_comment" data-id="' + escapeHtml(c.id) + '">Block</button>');
+        }
+        if (acts.length) h += '<div class="comment-actions">' + acts.join('') + '</div>';
+      }
+      h += '</div></div>';
+    });
+    h += Store.guest
+      ? '<button class="btn btn-ghost rv-login" type="button" data-guest-auth="login">Log in to comment</button>'
+      : '<div class="rv-input"><input type="text" maxlength="1000" placeholder="Add a comment…" data-rv-input="' + escapeHtml(id) + '" aria-label="Add a comment"><button type="button" data-rv-send="' + escapeHtml(id) + '">Post</button></div>';
+    return h + '</div>';
+  }
+  function rvWrapHTML(r) {
+    return '<div class="rv-wrap" data-rv="' + escapeHtml(String(r.id)) + '">' + rvInnerHTML(r) + '</div>';
+  }
+  function refreshThread(reviewId) {
+    const r = profReviews.find(function (x) { return String(x.id) === String(reviewId); });
+    if (!r) return;
+    const sel = '[data-rv="' + (window.CSS && CSS.escape ? CSS.escape(String(reviewId)) : String(reviewId)) + '"]';
+    document.querySelectorAll(sel).forEach(function (el) { el.innerHTML = rvInnerHTML(r); });
+  }
+  function reviewActionsHTML(r) {
+    if (Store.guest) return '';
+    if (isMineReview(r)) {
+      return '<div class="safety-row"><button class="text-action" type="button" data-rv-edit="' + escapeHtml(r.id) + '">Edit</button>' +
+        '<button class="text-action danger" type="button" data-rv-del="' + escapeHtml(r.id) + '">Delete</button></div>';
+    }
+    return '<div class="safety-row"><button class="text-action" type="button" data-report="review" data-id="' + escapeHtml(r.id) + '">Report</button>' +
+      '<button class="text-action danger" type="button" data-block="review" data-id="' + escapeHtml(r.id) + '">Block</button></div>';
+  }
+
   function profCardHTML(r) {
     return `<article class="prof-card">
       <div class="rating-row"><span class="rating-score">${Number(r.rating).toFixed(1)}</span><span class="rating-stars">${starString(r.rating)}</span></div>
@@ -167,22 +288,24 @@
     </article>`;
   }
 
-  function profFullHTML(r) {
-    const mine = Store.currentUser() && r.authorId === Store.currentUser().userId;
-    return `<article class="prof-full">
+  function profFullHTML(r, hideCourse) {
+    const ck = courseOpenAttr(r);
+    const course = hideCourse ? '' : (ck
+      ? `<button type="button" class="dept dept-link" data-class-open="${escapeHtml(ck)}">${escapeHtml(r.course)} <span aria-hidden="true">›</span></button>`
+      : `<div class="dept">${escapeHtml(r.course)}</div>`);
+    return `<article class="prof-full" data-review-id="${escapeHtml(r.id)}">
       <div class="head-row">
         <div>
           <h3>${escapeHtml(r.prof)}</h3>
-          <div class="dept">${escapeHtml(r.course)}</div>
+          ${course}
         </div>
         <div class="rating-row"><span class="rating-score">${Number(r.rating).toFixed(1)}</span></div>
       </div>
-      <div class="review-meta"><span>${escapeHtml(r.quarter)}</span><span>·</span><span>${escapeHtml(timeAgo(r.ts))}</span>${sampleBadge(r)}</div>
+      <div class="review-meta"><span>${escapeHtml(r.quarter)}</span><span>·</span><span>${escapeHtml(timeAgo(r.ts))}${r.edited ? ' · edited' : ''}</span>${isMineReview(r) ? '<span class="cw-mine">Your review</span>' : ''}${sampleBadge(r)}</div>
+      ${tagsHTML(r)}
       <p>${escapeHtml(r.text)}</p>
-      ${(mine || Store.guest) ? '' : `<div class="safety-row">
-        <button class="text-action" type="button" data-report="review" data-id="${escapeHtml(r.id)}">Report</button>
-        <button class="text-action danger" type="button" data-block="review" data-id="${escapeHtml(r.id)}">Block</button>
-      </div>`}
+      ${reviewActionsHTML(r)}
+      ${rvWrapHTML(r)}
     </article>`;
   }
 
@@ -199,7 +322,10 @@
     if (item.kind === 'story') {
       return `<article class="feed-card" data-go="stories">${storyCardHTML(item.data)}</article>`;
     }
-    return `<article class="feed-card" data-go="professors">${profCardHTML(item.data)}</article>`;
+    const ck = courseOpenAttr(item.data);
+    return ck
+      ? `<article class="feed-card" data-class-open="${escapeHtml(ck)}" role="button" tabindex="0">${profCardHTML(item.data)}</article>`
+      : `<article class="feed-card" data-go="professors">${profCardHTML(item.data)}</article>`;
   }
 
   async function refreshCache() {
@@ -207,6 +333,8 @@
     cache.stories = stories = await Store.listStories();
     cache.reviews = profReviews = await Store.listReviews();
     try { plans = await Store.listPlans(); } catch (e) { plans = []; }
+    await loadReviewComments();
+    try { courseLinks = await Store.listCourseLinks(); } catch (e) { courseLinks = []; }
   }
 
   function mixedFeed() {
@@ -625,6 +753,20 @@
       }
       e.reviews.push(r);
     });
+    // Classes students added as requirements, or listed in their Course work plans.
+    function addSeen(code, name) {
+      code = normCode(code);
+      const k = codeKey(code);
+      if (!k || !/\d/.test(k) || k.length > 14) return;
+      const e = m[k] = m[k] || { key: k, codes: {}, names: {}, reviews: [] };
+      e.codes[code] = (e.codes[code] || 0) + 0.5;
+      name = String(name || '').trim().replace(/\s+/g, ' ');
+      if (name) { const nk = name.toLowerCase(); (e.names[nk] = e.names[nk] || { name: name, n: 0 }).n += 0.5; }
+    }
+    (courseLinks || []).forEach(function (l) { addSeen(l.fromCode); addSeen(l.toCode); });
+    (plans || []).forEach(function (p) {
+      (p.quarters || []).forEach(function (q) { (q.classes || []).forEach(function (c) { addSeen(c.code, c.name); }); });
+    });
     Object.keys(m).forEach(function (k) {
       const e = m[k];
       e.code = topKey(e.codes, function (c) { return c && c.indexOf('&') >= 0; });
@@ -682,6 +824,7 @@
     const picked = document.getElementById('profClassPicked');
     const find = document.getElementById('profClassFind');
     if (!picked || !find) return;
+    checkDupReview();
     const adding = !document.getElementById('profClassManual').hidden;
     picked.hidden = !pkPicked; find.hidden = pkPicked || adding;
     if (pkPicked) {
@@ -824,11 +967,13 @@
   }
   function psReviewRow(r, showCourse) {
     const pc = parseCourse(r.course);
-    const mine = Store.currentUser() && r.authorId === Store.currentUser().userId;
-    return '<div class="ps-row"><div class="t"><div><h4>' + escapeHtml(showCourse ? (pc.code + (pc.name ? ' · ' + pc.name : '')) : r.quarter) + '</h4>' +
-      '<div class="m">' + escapeHtml(showCourse ? r.quarter : '') + (showCourse ? ' · ' : '') + escapeHtml(timeAgo(r.ts)) + '</div></div>' +
-      '<span class="ps-sc">' + Number(r.rating).toFixed(1) + '</span></div><p>' + escapeHtml(r.text) + '</p>' +
-      ((mine || Store.guest) ? '' : '<div class="safety-row"><button class="text-action" type="button" data-report="review" data-id="' + escapeHtml(r.id) + '">Report</button></div>') + '</div>';
+    const ck = courseOpenAttr(r);
+    const title = escapeHtml(showCourse ? (pc.code + (pc.name ? ' · ' + pc.name : '')) : r.quarter);
+    return '<div class="ps-row" data-review-id="' + escapeHtml(r.id) + '"><div class="t"><div><h4>' +
+      (showCourse && ck ? '<button type="button" class="ps-class-link" data-class-open="' + escapeHtml(ck) + '">' + title + ' <span aria-hidden="true">›</span></button>' : title) + '</h4>' +
+      '<div class="m">' + escapeHtml(showCourse ? r.quarter : '') + (showCourse ? ' · ' : '') + escapeHtml(timeAgo(r.ts)) + (r.edited ? ' · edited' : '') + '</div></div>' +
+      '<span class="ps-sc">' + Number(r.rating).toFixed(1) + '</span></div>' + tagsHTML(r) + '<p>' + escapeHtml(r.text) + '</p>' +
+      reviewActionsHTML(r) + rvWrapHTML(r) + '</div>';
   }
   function psSuggestions() {
     const q = psQ.trim().toLowerCase(), qk = codeKey(psQ);
@@ -874,9 +1019,11 @@
       .sort(function (a, b) { return avgOf(b.reviews) - avgOf(a.reviews) || b.reviews.length - a.reviews.length; });
     if (!rows.length) {
       return '<div class="ps-head"><b>' + escapeHtml(e.code + (e.name ? ' · ' + e.name : '')) + '</b><span>No reviews for this class yet.</span></div>' +
+        '<div class="ps-wrap"><button type="button" class="btn btn-ghost cls-open-btn" data-class-open="' + escapeHtml(e.key) + '">Open class page ›</button></div>' +
         '<div class="ps-wrap"><button type="button" class="btn btn-primary" style="width:100%" data-empty-action="review">Write the first review</button></div>';
     }
     return '<div class="ps-head"><b>' + escapeHtml(e.code + (e.name ? ' · ' + e.name : '')) + '</b><span>Professors who taught this class</span></div>' +
+      '<div class="ps-wrap"><button type="button" class="btn btn-ghost cls-open-btn" data-class-open="' + escapeHtml(e.key) + '">Open class page: requirements, path, and comments ›</button></div>' +
       '<div class="ps-lbl">Best rated first</div>' + rows.map(function (p) {
         const rs = recent(p.reviews), open = psExp[p.key + '|' + psSel], avg = avgOf(p.reviews);
         return '<div class="ps-row"><div class="t"><div><h4>' + escapeHtml(p.name) + '</h4><div class="m">' + avg.toFixed(1) + ' avg · ' + plural(p.reviews.length, 'review') + ' · last taught ' + escapeHtml(rs[0].quarter) + '</div></div>' +
@@ -960,6 +1107,210 @@
     renderProfSearch();
   }
 
+  // ================= Class page: path, requirements (added by students), taken together =================
+  const CONFIRM_VOTES = 3;
+  function linkStatus(l) {
+    if (l.up >= CONFIRM_VOTES && l.up > l.down) return 'ok';
+    if (l.down >= CONFIRM_VOTES && l.down > l.up) return 'hidden';
+    return 'sug';
+  }
+  function classInfo(key) {
+    const e = courseIndex()[key];
+    let code = e && e.code;
+    if (!code) {
+      const l = courseLinks.find(function (x) { return x.fromKey === key || x.toKey === key; });
+      if (l) code = l.fromKey === key ? l.fromCode : l.toCode;
+    }
+    if (!code) code = key.replace(/^([A-Z]+)(\d)/, '$1 $2');
+    return { key: key, code: normCode(code), name: (e && e.name) || '', reviews: e ? e.reviews : [] };
+  }
+  function shortName(key) {
+    const i = classInfo(key);
+    return { code: i.code, name: i.name };
+  }
+  function bestLink(list, key) {
+    const sj = subjOf(classInfo(key).code);
+    return list.slice().sort(function (a, b) {
+      return (b.up - a.up) || ((subjOf(b.fromCode) === sj) + (subjOf(b.toCode) === sj)) - ((subjOf(a.fromCode) === sj) + (subjOf(a.toCode) === sj)) || (a.ts - b.ts);
+    })[0];
+  }
+  function seqPathHTML(key) {
+    const ok = courseLinks.filter(function (l) { return linkStatus(l) === 'ok'; });
+    const seen = {}; seen[key] = 1;
+    const back = [], fwd = [];
+    let cur = key;
+    for (let i = 0; i < 3; i++) {
+      const c = cur;
+      const p = bestLink(ok.filter(function (l) { return l.toKey === c && !seen[l.fromKey]; }), key);
+      if (!p) break;
+      seen[p.fromKey] = 1; back.unshift(p.fromKey); cur = p.fromKey;
+    }
+    cur = key;
+    for (let i = 0; i < 3; i++) {
+      const c = cur;
+      const n = bestLink(ok.filter(function (l) { return l.fromKey === c && !seen[l.toKey]; }), key);
+      if (!n) break;
+      seen[n.toKey] = 1; fwd.push(n.toKey); cur = n.toKey;
+    }
+    if (!back.length && !fwd.length) {
+      return '<div class="cls-card"><div class="cls-h"><h3>Class path</h3></div><p class="cls-empty">The path shows up once a class before or after this one is confirmed by ' + CONFIRM_VOTES + ' students.</p></div>';
+    }
+    function node(k, cur) {
+      const s = shortName(k);
+      return cur ? '<span class="seq-node cur" aria-current="true"><b>' + escapeHtml(s.code) + '</b><small>This class</small></span>'
+        : '<button type="button" class="seq-node" data-class-open="' + escapeHtml(k) + '"><b>' + escapeHtml(s.code) + '</b>' + (s.name ? '<small>' + escapeHtml(s.name) + '</small>' : '') + '</button>';
+    }
+    const parts = back.map(function (k) { return node(k); }).concat([node(key, true)]).concat(fwd.map(function (k) { return node(k); }));
+    return '<div class="cls-card"><div class="cls-h"><h3>Class path</h3><span class="cls-src">Confirmed by students</span></div>' +
+      '<div class="seq-path">' + parts.join('<span class="seq-arrow" aria-hidden="true">›</span>') + '</div>' +
+      '<p class="cls-tip">Tap a class to open its page.</p></div>';
+  }
+  function linkRowHTML(l, side) {
+    const otherKey = side === 'before' ? l.fromKey : l.toKey;
+    const s = shortName(otherKey);
+    const st = linkStatus(l);
+    const guest = Store.guest;
+    let count = l.up + ' said correct' + (l.down ? ' · ' + l.down + ' said not right' : '');
+    if (st === 'sug' && l.up < CONFIRM_VOTES) count += ' · needs ' + (CONFIRM_VOTES - l.up) + ' more';
+    let acts = '';
+    if (l.mine) {
+      acts = '<span class="lk-mine">Your suggestion</span><button class="text-action danger" type="button" data-ldel="' + escapeHtml(l.id) + '">Delete</button>';
+    } else {
+      acts = '<button type="button" class="vote-btn' + (l.myVote > 0 ? ' on' : '') + '" data-lvote="1" data-id="' + escapeHtml(l.id) + '" aria-pressed="' + (l.myVote > 0) + '">✓ Correct</button>' +
+        '<button type="button" class="vote-btn no' + (l.myVote < 0 ? ' on' : '') + '" data-lvote="-1" data-id="' + escapeHtml(l.id) + '" aria-pressed="' + (l.myVote < 0) + '">✕ Not right</button>';
+    }
+    const src = /^https?:\/\//i.test(l.source || '') ? '<a class="lk-src" href="' + escapeHtml(l.source) + '" target="_blank" rel="noopener noreferrer nofollow">Has source ↗</a>' : '';
+    return '<div class="lk-item"><div class="lk-top"><button type="button" class="lk-class" data-class-open="' + escapeHtml(otherKey) + '"><b>' + escapeHtml(s.code) + '</b>' + (s.name ? ' <span>' + escapeHtml(s.name) + '</span>' : '') + '</button>' +
+      '<span class="lk-st ' + st + '">' + (st === 'ok' ? '✓ Confirmed' : 'Suggested') + '</span></div>' +
+      (l.note ? '<div class="lk-note">' + escapeHtml(l.note) + '</div>' : '') +
+      '<div class="lk-bot"><span class="lk-count">' + escapeHtml(count) + '</span>' + src + '</div>' +
+      '<div class="lk-acts">' + acts + (l.mine || guest ? '' : '<button class="text-action" type="button" data-report="course_link" data-id="' + escapeHtml(l.id) + '">Report</button>') + '</div></div>';
+  }
+  function sortLinks(list) {
+    const rank = { ok: 0, sug: 1, hidden: 2 };
+    return list.slice().sort(function (a, b) { return (rank[linkStatus(a)] - rank[linkStatus(b)]) || (b.up - a.up) || (a.ts - b.ts); });
+  }
+  function tagShare(key, tag) {
+    const e = courseIndex()[key];
+    const tagged = (e ? e.reviews : []).filter(function (r) { return (r.tags || []).length; });
+    if (tagged.length < 2) return 0;
+    return tagged.filter(function (r) { return r.tags.indexOf(tag) >= 0; }).length / tagged.length;
+  }
+  function togetherHTML(key) {
+    if (Store.guest) return '';
+    const counts = {};
+    let plansWith = 0;
+    plans.forEach(function (p) {
+      let had = false;
+      const seen = {};
+      (p.quarters || []).forEach(function (q) {
+        const keys = (q.classes || []).map(function (c) { return codeKey(c.code); }).filter(Boolean);
+        if (keys.indexOf(key) < 0) return;
+        had = true;
+        keys.forEach(function (k) { if (k !== key && !seen[k]) { seen[k] = 1; counts[k] = (counts[k] || 0) + 1; } });
+      });
+      if (had) plansWith++;
+    });
+    const rows = Object.keys(counts).filter(function (k) { return counts[k] >= 3; })
+      .sort(function (a, b) { return counts[b] - counts[a] || a.localeCompare(b); }).slice(0, 5);
+    const heavyHere = tagShare(key, 'Heavy workload') >= 0.5;
+    const body = rows.length ? rows.map(function (k) {
+      const s = shortName(k);
+      let chip = '';
+      if (heavyHere && tagShare(k, 'Heavy workload') >= 0.5) chip = '<span class="lk-st warn">Both heavy workload</span>';
+      else if (tagShare(k, 'Light workload') >= 0.5) chip = '<span class="lk-st ok">Light workload</span>';
+      return '<div class="tg-row"><button type="button" class="lk-class" data-class-open="' + escapeHtml(k) + '"><b>' + escapeHtml(s.code) + '</b>' + (s.name ? ' <span>' + escapeHtml(s.name) + '</span>' : '') + '</button>' +
+        '<span class="tg-n">in ' + counts[k] + ' plans ' + chip + '</span></div>';
+    }).join('') + '<p class="cls-tip">From ' + plural(plansWith, 'Course work plan') + ' students shared. Names are never shown.</p>'
+      : '<p class="cls-empty">Not enough shared plans yet. A class shows up here once 3 or more Course work plans take it in the same quarter as this one.</p>';
+    return '<div class="cls-card"><div class="cls-h"><h3>Often taken in the same quarter</h3><span class="cls-src">From student plans</span></div>' + body + '</div>';
+  }
+  function renderClassPage() {
+    const el = document.getElementById('page-class');
+    if (!el) return;
+    const key = classKey;
+    if (!key) { el.innerHTML = emptyHTML('Class not found', 'Pick a class from Professor Reviews.'); return; }
+    const info = classInfo(key);
+    const revs = recent(info.reviews);
+    const profs = [];
+    revs.forEach(function (r) { const n = canonicalProfName(r.prof); if (profs.indexOf(n) < 0) profs.push(n); });
+    const before = sortLinks(courseLinks.filter(function (l) { return l.toKey === key && linkStatus(l) !== 'hidden'; }));
+    const after = sortLinks(courseLinks.filter(function (l) { return l.fromKey === key && linkStatus(l) !== 'hidden'; }));
+    el.innerHTML =
+      '<div class="post-detail-head"><button class="back-btn" type="button" data-go="professors">Back</button></div>' +
+      '<div class="cls-head"><h2>' + escapeHtml(info.code) + (info.name ? ' · ' + escapeHtml(info.name) : '') + '</h2>' +
+      '<div class="cls-meta">' + plural(revs.length, 'review') + (profs.length ? ' · ' + escapeHtml(profs.slice(0, 3).join(', ')) + (profs.length > 3 ? ' +' + (profs.length - 3) : '') : '') + '</div></div>' +
+      seqPathHTML(key) +
+      '<div class="cls-card"><div class="cls-h"><h3>Before this class</h3><span class="cls-src">Added by students</span></div>' +
+      (before.map(function (l) { return linkRowHTML(l, 'before'); }).join('') || '<p class="cls-empty">Nobody has added a class yet. Know what you need first?</p>') +
+      '<button type="button" class="lk-add" data-ladd="before">+ Add a class needed before</button></div>' +
+      '<div class="cls-card"><div class="cls-h"><h3>After this class</h3><span class="cls-src">Added by students</span></div>' +
+      (after.map(function (l) { return linkRowHTML(l, 'after'); }).join('') || '<p class="cls-empty">Nobody has added a next class yet.</p>') +
+      '<button type="button" class="lk-add" data-ladd="after">+ Add a class that comes after</button></div>' +
+      '<p class="cls-tip cls-disclaimer">Added and checked by students, not official. Always confirm with an advisor or the course catalog.</p>' +
+      togetherHTML(key) +
+      '<div class="section-head"><h2>Reviews (' + revs.length + ')</h2></div>' +
+      '<div class="prof-list">' + (revs.map(function (r) { return profFullHTML(r, true); }).join('') ||
+        emptyHTML('No reviews yet', 'Be the first to review this class.', 'Write a review', 'review-class')) + '</div>' +
+      (revs.length ? '<div class="cls-write"><button class="btn btn-primary" type="button" data-empty-action="review-class">Write a review for this class</button></div>' : '') +
+      guestFoot();
+  }
+  function openLinkModal(side) {
+    const info = classInfo(classKey);
+    fillCourseList();
+    let sideNow = side === 'after' ? 'after' : 'before';
+    const o = cwModal(
+      '<h3>Add a requirement</h3>' +
+      '<p class="aside-copy" style="margin:0 0 4px">For <b>' + escapeHtml(info.code) + '</b>, this class is</p>' +
+      '<div class="q-pills cw-two" id="lkSide"><button type="button" class="q-pill' + (sideNow === 'before' ? ' on' : '') + '" data-s="before">Needed before</button>' +
+      '<button type="button" class="q-pill' + (sideNow === 'after' ? ' on' : '') + '" data-s="after">Comes after</button></div>' +
+      '<label for="lkCode">Class</label><input type="text" id="lkCode" list="courseCodeList" maxlength="20" autocomplete="off" placeholder="e.g. MATH 142">' +
+      '<label for="lkNote">Note (optional)</label><input type="text" id="lkNote" maxlength="120" placeholder="e.g. 2.0 or higher, or placement">' +
+      '<label for="lkSrc">Source link (optional)</label><input type="url" id="lkSrc" maxlength="300" placeholder="Paste a catalog link">' +
+      '<p class="pk-note">Other students check it. ' + CONFIRM_VOTES + ' "Correct" votes make it confirmed.</p>' +
+      '<p class="form-error" id="lkErr"></p>' +
+      '<div class="modal-actions"><button class="btn btn-ghost" type="button" id="lkCancel">Cancel</button><button class="btn btn-primary" type="button" id="lkSave">Add</button></div>');
+    o.querySelector('#lkSide').onclick = function (e) {
+      const b = e.target.closest('.q-pill'); if (!b) return;
+      sideNow = b.dataset.s;
+      o.querySelectorAll('#lkSide .q-pill').forEach(function (x) { x.classList.toggle('on', x === b); });
+    };
+    o.querySelector('#lkCancel').onclick = function () { o.remove(); };
+    const err = o.querySelector('#lkErr');
+    o.querySelectorAll('input').forEach(function (i) { i.addEventListener('input', function () { err.textContent = ''; }); });
+    o.querySelector('#lkSave').onclick = function () {
+      busy(this, async function () {
+        const raw = o.querySelector('#lkCode').value;
+        const code = normCode(raw);
+        if (!/\d/.test(code)) { err.textContent = 'Please write a course code, like MATH 142.'; o.querySelector('#lkCode').focus(); return; }
+        const known = courseIndex()[codeKey(code)];
+        const other = known && known.code ? known.code : code;
+        const r = await Store.addCourseLink({
+          fromCode: sideNow === 'before' ? other : info.code,
+          toCode: sideNow === 'before' ? info.code : other,
+          note: o.querySelector('#lkNote').value,
+          source: o.querySelector('#lkSrc').value
+        });
+        if (!r || r.ok === false) { err.textContent = (r && r.error) || 'Could not add. Please try again.'; return; }
+        o.remove();
+        try { courseLinks = await Store.listCourseLinks(); } catch (e2) {}
+        renderClassPage();
+        showToast('Added. It shows as Suggested until ' + CONFIRM_VOTES + ' students confirm it.');
+      });
+    };
+    setTimeout(function () { o.querySelector('#lkCode').focus(); }, 50);
+  }
+  function openReviewOnClass(r) {
+    if (!r) { showToast('That review was deleted.'); return; }
+    const k = courseOpenAttr(r);
+    rvOpen.add(String(r.id));
+    markSeen(r);
+    if (!k) { navTo('professors'); return; }
+    pendingReview = String(r.id);
+    if (hashPage().name === 'class' && classKey === k) { goPage('class', k); return; }
+    navTo('class', k);
+  }
+
   function renderMyPage() {
     const user = Store.currentUser();
     const minePosts = posts.filter(function (p) { return user && p.authorId === user.userId; });
@@ -969,6 +1320,9 @@
         if (user && c.authorId === user.userId) commentCount++;
       });
     });
+    reviewComments.forEach(function (c) { if (user && c.authorId === user.userId) commentCount++; });
+    const mineReviews = profReviews.filter(function (r) { return isMineReview(r); });
+    const newOnMine = mineReviews.reduce(function (s, r) { return s + newCount(r); }, 0);
     const initials = (user.nickname || 'AB').split(/\s+/).map(function (w) { return w[0]; }).join('').slice(0, 2).toUpperCase();
     document.getElementById('page-my').innerHTML = `
       <div class="profile-head">
@@ -981,6 +1335,7 @@
       <div class="menu-list" id="myMenuList">
         <button class="menu-item" type="button" data-my="posts">My posts <span class="right">${minePosts.length} ›</span></button>
         <button class="menu-item" type="button" data-my="comments">My comments <span class="right">${commentCount} ›</span></button>
+        <button class="menu-item" type="button" data-my="reviews">My reviews <span class="right">${newOnMine ? '<span class="rv-new">' + newOnMine + ' new</span> ' : ''}${mineReviews.length} ›</span></button>
         <button class="menu-item" type="button" data-my="saved">Saved stories <span class="right">${account().savedStoryIds.length} ›</span></button>
         <button class="menu-item" type="button" data-page="timer">Study timer <span class="right">Private ›</span></button>
         <button class="menu-item" type="button" data-page="schedule">Class schedule <span class="right">Private ›</span></button>
@@ -1072,7 +1427,7 @@
   }
 
   function navTo(name, extra) {
-    if (name === 'home' || name === 'board' || name === 'stories' || name === 'professors' || name === 'my' || name === 'timer' || name === 'schedule' || name === 'search' || name === 'alerts' || name === 'post') {
+    if (name === 'home' || name === 'board' || name === 'stories' || name === 'professors' || name === 'my' || name === 'timer' || name === 'schedule' || name === 'search' || name === 'alerts' || name === 'post' || name === 'class') {
       const next = extra ? '#' + name + '/' + extra : '#' + name;
       if (location.hash !== next) location.hash = next;
       else goPage(name, extra);
@@ -1081,13 +1436,14 @@
 
   let navSeq = 0, cacheReady = false;
   function dataSig() {
-    try { return JSON.stringify([posts, stories, profReviews, plans]); } catch (e) { return String(Math.random()); }
+    try { return JSON.stringify([posts, stories, profReviews, plans, courseLinks]); } catch (e) { return String(Math.random()); }
   }
   function renderPage(name) {
     if (name === 'home') renderHome();
     if (name === 'board') renderBoard();
     if (name === 'stories') renderStories();
     if (name === 'professors') renderProfessors();
+    if (name === 'class') renderClassPage();
     if (name === 'my') renderMyPage();
     if (name === 'timer') renderTimerPage();
     if (name === 'schedule') renderSchedulePage();
@@ -1100,7 +1456,7 @@
 
   async function goPage(name, extra) {
     const seq = ++navSeq;
-    if (Store.guest && ['home', 'board', 'stories', 'professors'].indexOf(name) < 0) {
+    if (Store.guest && ['home', 'board', 'stories', 'professors', 'class'].indexOf(name) < 0) {
       try { history.replaceState(null, '', '#home'); } catch (e) {}
       await goPage('home');
       showGuestPrompt();
@@ -1121,7 +1477,8 @@
     if (!document.getElementById('page-' + name)) name = 'home';
     document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
     document.getElementById('page-' + name).classList.add('active');
-    const tab = (name === 'timer' || name === 'schedule' || name === 'search' || name === 'alerts' || name === 'post') ? (name === 'timer' || name === 'schedule' ? 'my' : 'home') : name;
+    if (name === 'class') classKey = extra ? String(extra).toUpperCase().replace(/[^A-Z0-9]/g, '') || null : null;
+    const tab = name === 'class' ? 'professors' : (name === 'timer' || name === 'schedule' || name === 'search' || name === 'alerts' || name === 'post') ? (name === 'timer' || name === 'schedule' ? 'my' : 'home') : name;
     document.querySelectorAll('.navbtn').forEach(function (b) { b.classList.toggle('active', b.dataset.page === tab); });
     document.querySelectorAll('.dn-item').forEach(function (b) { b.classList.toggle('active', b.dataset.page === tab); });
 
@@ -1133,7 +1490,7 @@
     } else if (name === 'stories') {
       fab.hidden = false;
       fabLabel.textContent = 'Write a story';
-    } else if (name === 'professors') {
+    } else if (name === 'professors' || name === 'class') {
       fab.hidden = false;
       fabLabel.textContent = 'Write a review';
     } else {
@@ -1152,6 +1509,12 @@
     const page = document.getElementById('page-' + name);
     const typing = document.activeElement && page.contains(document.activeElement) && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
     if (changed && !typing) renderPage(name);
+    if (name === 'class' && pendingReview) {
+      const want = pendingReview;
+      pendingReview = null;
+      const card = Array.prototype.find.call(document.querySelectorAll('#page-class [data-review-id]'), function (x) { return x.dataset.reviewId === want; });
+      if (card) { card.scrollIntoView({ block: 'start' }); card.classList.add('rv-flash'); setTimeout(function () { card.classList.remove('rv-flash'); }, 1600); }
+    }
     if (name === 'alerts') await renderAlerts();
     renderAside();
     await updateAlertDot();
@@ -1177,12 +1540,12 @@
     const list = await Store.notifications();
     document.getElementById('alertsList').innerHTML = list.length
       ? list.map(function (n) {
-        return `<button class="menu-item" type="button" data-post-id="${escapeHtml(n.postId || '')}">
+        return `<button class="menu-item" type="button" data-post-id="${escapeHtml(n.postId || '')}" data-review-id="${escapeHtml(n.reviewId || '')}">
           <div><div style="font-weight:600;font-size:13.5px;">${escapeHtml(n.text)}</div>
           <div style="font-size:11.5px;color:var(--ink-soft);margin-top:4px;">${escapeHtml(timeAgo(n.ts))}</div></div>
           <span class="right">›</span></button>`;
       }).join('')
-      : emptyHTML('No notifications yet', 'Comments on your posts will show up here.');
+      : emptyHTML('No notifications yet', 'Comments on your posts and reviews will show up here.');
   }
 
   async function renderSearch(q) {
@@ -1372,9 +1735,65 @@
     }).join('');
   }
 
-  function openProfModal() {
+  // ---- Tags in the review form ----
+  let profTags = [];
+  function renderTagPick(msg) {
+    document.getElementById('profTagPick').innerHTML = REVIEW_TAGS.map(function (t) {
+      const on = profTags.indexOf(t) >= 0;
+      return '<button type="button" class="tag-chip' + (on ? ' on' : '') + '" data-tag="' + escapeHtml(t) + '" aria-pressed="' + on + '">' + escapeHtml(t) + '</button>';
+    }).join('') + (msg ? '<div class="tag-msg">' + escapeHtml(msg) + '</div>' : '');
+  }
+  document.getElementById('profTagPick').addEventListener('click', function (e) {
+    const b = e.target.closest('[data-tag]'); if (!b) return;
+    const t = b.dataset.tag, i = profTags.indexOf(t);
+    if (i >= 0) { profTags.splice(i, 1); renderTagPick(); return; }
+    const opp = TAG_OPPOSITE[t];
+    if (opp && profTags.indexOf(opp) >= 0) profTags.splice(profTags.indexOf(opp), 1);
+    if (profTags.length >= MAX_TAGS) { renderTagPick('You can pick up to ' + MAX_TAGS + ' tags.'); return; }
+    profTags.push(t);
+    renderTagPick();
+  });
+
+  // ---- One review per professor + class ----
+  function currentReviewCourseKey() {
+    if (!pkPicked) return '';
+    return codeKey(document.getElementById('profRevCourse').value);
+  }
+  function findMyDupReview() {
+    const me = myId(); if (!me) return null;
+    const pn = canonicalProfName(document.getElementById('profRevName').value).toLowerCase();
+    const k = currentReviewCourseKey();
+    if (!pn || !k) return null;
+    return profReviews.find(function (r) {
+      return r.authorId === me && String(r.id) !== String(editingReviewId) && reviewKey(r) === k && canonicalProfName(r.prof).toLowerCase() === pn;
+    }) || null;
+  }
+  function checkDupReview() {
+    const box = document.getElementById('profDupNote');
+    if (!box) return null;
+    const d = findMyDupReview();
+    if (!d) { box.hidden = true; box.innerHTML = ''; return null; }
+    box.innerHTML = 'You already reviewed ' + escapeHtml(canonicalProfName(d.prof)) + ' for ' + escapeHtml(parseCourse(d.course).code) + '. ' +
+      '<button type="button" class="dup-edit" data-dup-edit="' + escapeHtml(d.id) + '">Edit your review</button> instead.';
+    box.hidden = false;
+    return d;
+  }
+  document.getElementById('profRevName').addEventListener('input', checkDupReview);
+  document.getElementById('profRevName').addEventListener('change', checkDupReview);
+  document.getElementById('profDupNote').addEventListener('click', function (e) {
+    const b = e.target.closest('[data-dup-edit]'); if (!b) return;
+    const r = findReview(b.dataset.dupEdit);
+    if (r) openProfModal({ edit: r });
+  });
+
+  function openProfModal(opts) {
+    opts = opts || {};
+    const edit = opts.edit || null;
+    editingReviewId = edit ? edit.id : null;
     fillProfNameList();
-    document.getElementById('profRevName').value = '';
+    document.getElementById('profModalHeading').textContent = edit ? 'Edit your review' : 'New professor review';
+    document.getElementById('profModalPost').textContent = edit ? 'Save changes' : 'Post anonymously';
+    document.getElementById('profRevName').value = edit ? canonicalProfName(edit.prof) : '';
     document.getElementById('profRevCourse').value = '';
     document.getElementById('profRevCourseName').value = '';
     document.getElementById('profRevCourseName').readOnly = false;
@@ -1385,14 +1804,37 @@
     const curYear = nowD.getFullYear();
     const mo = nowD.getMonth();
     profQuarter = mo <= 2 ? 'Winter' : mo <= 5 ? 'Spring' : mo <= 7 ? 'Summer' : 'Fall';
+    let year = curYear;
+    if (edit) {
+      const m = String(edit.quarter || '').match(/(Winter|Spring|Summer|Fall)\s+(\d{4})/);
+      if (m) { profQuarter = m[1]; year = parseInt(m[2], 10); }
+    }
     const ySel = document.getElementById('profRevYear');
     ySel.innerHTML = '';
-    for (let y = curYear; y >= 2020; y--) ySel.innerHTML += '<option value="' + y + '">' + y + '</option>';
-    ySel.value = String(curYear);
+    for (let y = Math.max(curYear, year); y >= Math.min(2020, year); y--) ySel.innerHTML += '<option value="' + y + '">' + y + '</option>';
+    ySel.value = String(year);
     markProfQuarter();
-    document.getElementById('profRevRating').value = '5';
-    document.getElementById('profRevText').value = '';
+    document.getElementById('profRevRating').value = edit ? String(Math.min(5, Math.max(1, Math.round(edit.rating) || 5))) : '5';
+    document.getElementById('profRevText').value = edit && edit.text !== '(no experience shared)' ? edit.text : '';
+    document.getElementById('profRevPrev').value = '';
+    profTags = edit ? (edit.tags || []).filter(function (t) { return REVIEW_TAGS.indexOf(t) >= 0; }).slice(0, MAX_TAGS) : [];
+    renderTagPick();
+    if (edit) {
+      const pc = parseCourse(edit.course);
+      document.getElementById('profRevCourse').value = pc.code;
+      document.getElementById('profRevCourseName').value = pc.name;
+      document.getElementById('profRevCourseName').readOnly = !!pc.name;
+      pkPicked = true;
+      renderClassPicker();
+    } else if (opts.classKey) {
+      const e = courseIndex()[opts.classKey];
+      if (e && e.name) pkPick(opts.classKey);
+      else openAddClass(e ? e.code : classInfo(opts.classKey).code, true);
+    }
+    checkDupReview();
     document.getElementById('profModalOverlay').classList.add('show');
+    const modal = document.querySelector('#profModalOverlay .modal');
+    if (modal) modal.scrollTop = 0;
   }
 
   function openMyModal(title, bodyHTML) {
@@ -1802,7 +2244,7 @@
   document.getElementById('guestBarLogin').onclick = function () { openAuth('login'); };
   document.getElementById('guestBarSignup').onclick = function () { openAuth('signup'); };
 
-  var GUEST_LOCKED = '.post[data-post-id], .hot-item[data-post-id], [data-like], .story-save-btn, #storyComposer, #profComposer, [data-empty-action], #fab, #alertsBtn, #searchBtn, [data-page="my"], [data-page="timer"], [data-page="schedule"]';
+  var GUEST_LOCKED = '.post[data-post-id], .hot-item[data-post-id], [data-like], .story-save-btn, #storyComposer, #profComposer, [data-empty-action], #fab, #alertsBtn, #searchBtn, [data-page="my"], [data-page="timer"], [data-page="schedule"], [data-lvote], [data-ladd], [data-ldel], [data-rv-send]';
   document.addEventListener('click', function (e) {
     if (!Store.guest || document.getElementById('appRoot').hidden) return;
     const auth = e.target.closest('[data-guest-auth]');
@@ -1924,12 +2366,16 @@
     const name = hashPage().name;
     if (name === 'stories') openStoryModal();
     else if (name === 'professors') openProfModal();
+    else if (name === 'class') openProfModal({ classKey: classKey });
     else openModal(name === 'board' ? activeBoard : 'free');
   };
 
   document.getElementById('main').addEventListener('click', function (e) {
     const likeBtn = e.target.closest('[data-like]');
     if (likeBtn) { e.stopPropagation(); toggleLike(likeBtn.dataset.like); return; }
+    if (e.target.closest('[data-rv-toggle],[data-rv-send],[data-rc-edit],[data-rc-del],[data-rc-save],[data-rc-cancel],[data-rc-help],[data-rv-edit],[data-rv-del],[data-lvote],[data-ladd],[data-ldel],[data-guest-auth]')) return;
+    const classOpen = e.target.closest('[data-class-open]');
+    if (classOpen) { navTo('class', classOpen.dataset.classOpen); return; }
     const cat = e.target.closest('.board-cat');
     if (cat) { activeBoard = cat.dataset.board; navTo('board', cat.dataset.board); return; }
     const go = e.target.closest('[data-go]');
@@ -1940,6 +2386,7 @@
       if (a === 'compose') openModal(hashPage().name === 'board' ? activeBoard : 'free');
       if (a === 'story') openStoryModal();
       if (a === 'review') openProfModal();
+      if (a === 'review-class') openProfModal({ classKey: classKey });
       return;
     }
     const pill = e.target.closest('[data-board-filter]');
@@ -1968,13 +2415,135 @@
     }
     const block = e.target.closest('[data-block]');
     if (block) {
-      if (confirm('Hide all posts from this author on your account?')) {
+      if (confirm('Hide everything from this person on your account?')) {
         const k = block.dataset.block, bid = block.dataset.id;
-        const list = k === 'post' ? posts : k === 'story' ? stories : profReviews;
+        const list = k === 'post' ? posts : k === 'story' ? stories : k === 'review_comment' ? reviewComments : k === 'course_link' ? courseLinks : profReviews;
         const item = list.find(function (x) { return String(x.id) === String(bid); });
         Store.blockAuthorOf(k, bid, item && item.authorId);
-        navTo(hashPage().name === 'post' ? 'home' : hashPage().name);
+        const h = hashPage();
+        if (h.name === 'post') navTo('home'); else goPage(h.name, h.extra);
       }
+    }
+  });
+
+  // Comments on reviews, review edit/delete, and class requirement votes.
+  function findReview(id) { return profReviews.find(function (x) { return String(x.id) === String(id); }); }
+  function reviewOfComment(cid) {
+    const c = reviewComments.find(function (x) { return String(x.id) === String(cid); });
+    return c ? { c: c, r: findReview(c.reviewId) } : null;
+  }
+  function rerenderHere() {
+    const h = hashPage();
+    if (h.name === 'post') return;
+    renderPage(h.name);
+  }
+  document.getElementById('main').addEventListener('click', async function (e) {
+    const t = e.target.closest('[data-rv-toggle],[data-rv-send],[data-rc-edit],[data-rc-del],[data-rc-save],[data-rc-cancel],[data-rc-help],[data-rv-edit],[data-rv-del],[data-lvote],[data-ladd],[data-ldel]');
+    if (!t) return;
+    const d = t.dataset;
+    if (d.rvToggle) {
+      const id = String(d.rvToggle);
+      if (rvOpen.has(id)) rvOpen.delete(id); else { rvOpen.add(id); markSeen(findReview(id)); }
+      rcEditing = null;
+      refreshThread(id);
+      if (rvOpen.has(id)) {
+        const inp = Array.prototype.find.call(document.querySelectorAll('[data-rv-input]'), function (x) { return x.dataset.rvInput === id; });
+        if (inp && window.innerWidth >= 900 && !(findReview(id).comments || []).length) inp.focus();
+      }
+      return;
+    }
+    if (Store.guest) { showGuestPrompt(); return; }
+    if (d.rvSend) {
+      const id = String(d.rvSend);
+      const inp = Array.prototype.find.call(document.querySelectorAll('[data-rv-input]'), function (x) { return x.dataset.rvInput === id; });
+      const text = inp ? inp.value.trim() : '';
+      if (!text) { if (inp) inp.focus(); return; }
+      busy(t, async function () {
+        const r = await Store.addReviewComment(id, text);
+        if (r && r.ok === false) { alert('Could not post comment: ' + (r.error || 'try again')); return; }
+        await loadReviewComments();
+        markSeen(findReview(id));
+        refreshThread(id);
+      });
+      return;
+    }
+    if (d.rcEdit) { const x = reviewOfComment(d.rcEdit); if (!x) return; rcEditing = x.c.id; refreshThread(x.c.reviewId); return; }
+    if (d.rcCancel) { rcEditing = null; refreshThread(d.rcCancel); return; }
+    if (d.rcSave) {
+      const x = reviewOfComment(d.rcSave); if (!x) return;
+      const inp = Array.prototype.find.call(document.querySelectorAll('[data-rc-input]'), function (y) { return y.dataset.rcInput === String(x.c.id); });
+      const text = inp ? inp.value.trim() : '';
+      if (!text) { if (inp) inp.focus(); return; }
+      busy(t, async function () {
+        const r = await Store.updateReviewComment(x.c.id, text);
+        if (r && r.ok === false) { alert('Could not save: ' + r.error); return; }
+        rcEditing = null;
+        await loadReviewComments();
+        refreshThread(x.c.reviewId);
+      });
+      return;
+    }
+    if (d.rcDel) {
+      const x = reviewOfComment(d.rcDel); if (!x) return;
+      if (!confirm('Delete this comment?')) return;
+      const r = await Store.deleteReviewComment(x.c.id);
+      if (r && r.ok === false) { alert('Could not delete: ' + r.error); return; }
+      await loadReviewComments();
+      markSeen(findReview(x.c.reviewId));
+      refreshThread(x.c.reviewId);
+      return;
+    }
+    if (d.rcHelp) {
+      const x = reviewOfComment(d.rcHelp); if (!x) return;
+      busy(t, async function () {
+        const r = await Store.markReviewCommentHelpful(x.c.id, !x.c.helpful);
+        if (r && r.ok === false) { alert('Could not save: ' + r.error); return; }
+        await loadReviewComments();
+        refreshThread(x.c.reviewId);
+      });
+      return;
+    }
+    if (d.rvEdit) { const r = findReview(d.rvEdit); if (r) openProfModal({ edit: r }); return; }
+    if (d.rvDel) {
+      const r = findReview(d.rvDel); if (!r) return;
+      if (!confirm('Delete this review? Its comments will be deleted too. This cannot be undone.')) return;
+      const res = await Store.deleteReview(r.id);
+      if (res && res.ok === false) { alert('Could not delete: ' + res.error); return; }
+      await refreshCache();
+      rerenderHere();
+      showToast('Review deleted.');
+      return;
+    }
+    if (d.ladd) { openLinkModal(d.ladd); return; }
+    if (d.lvote) {
+      const l = courseLinks.find(function (x) { return String(x.id) === String(d.id); });
+      if (!l) return;
+      const want = Number(d.lvote);
+      busy(t, async function () {
+        const r = await Store.voteCourseLink(l.id, l.myVote === want ? 0 : want);
+        if (r && r.ok === false) { alert('Could not vote: ' + r.error); return; }
+        try { courseLinks = await Store.listCourseLinks(); } catch (e2) {}
+        renderClassPage();
+      });
+      return;
+    }
+    if (d.ldel) {
+      if (!confirm('Delete your suggestion?')) return;
+      const r = await Store.deleteCourseLink(d.ldel);
+      if (r && r.ok === false) { alert('Could not delete: ' + r.error); return; }
+      try { courseLinks = await Store.listCourseLinks(); } catch (e2) {}
+      renderClassPage();
+    }
+  });
+  document.getElementById('main').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    const t = e.target;
+    if (t.dataset && t.dataset.rvInput) {
+      const b = Array.prototype.find.call(document.querySelectorAll('[data-rv-send]'), function (x) { return x.dataset.rvSend === t.dataset.rvInput; });
+      if (b) b.click();
+    } else if (t.dataset && t.dataset.rcInput) {
+      const b = Array.prototype.find.call(document.querySelectorAll('[data-rc-save]'), function (x) { return x.dataset.rcSave === t.dataset.rcInput; });
+      if (b) b.click();
     }
   });
 
@@ -1989,7 +2558,7 @@
     const o = cwModal(
       '<h3>Delete your account?</h3>' +
       '<p class="aside-copy" style="margin-bottom:6px">This deletes everything, forever. It cannot be undone:</p>' +
-      '<ul class="del-list"><li>Your account, email, and nickname</li><li>Your posts, comments, likes, stories, and reviews</li>' +
+      '<ul class="del-list"><li>Your account, email, and nickname</li><li>Your posts, comments, likes, stories, reviews, and comments on reviews</li><li>Class requirements you added and your votes</li>' +
       '<li>Your Course work plan and its comments</li><li>Your timer, schedule, and saved stories</li></ul>' +
       '<label for="delConfirm">Type DELETE to confirm</label>' +
       '<input type="text" id="delConfirm" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="DELETE">' +
@@ -2012,7 +2581,7 @@
         o.remove();
         if (tInterval) { clearInterval(tInterval); tInterval = null; }
         tSession = 0;
-        posts = []; stories = []; profReviews = []; plans = []; cacheReady = false;
+        posts = []; stories = []; profReviews = []; plans = []; reviewComments = []; courseLinks = []; rvOpen.clear(); cacheReady = false;
         try { sessionStorage.removeItem('scc_browsing'); history.replaceState(null, '', location.pathname); } catch (e) {}
         showLanding();
         showToast('Your account was deleted.');
@@ -2026,7 +2595,7 @@
     if (key === 'signout') {
       Store.signOut().then(function () {
         try { sessionStorage.removeItem('scc_browsing'); history.replaceState(null, '', location.pathname); } catch (e) {}
-        posts = []; stories = []; profReviews = []; plans = []; cacheReady = false;
+        posts = []; stories = []; profReviews = []; plans = []; reviewComments = []; courseLinks = []; rvOpen.clear(); cacheReady = false;
         showLanding();
       });
       return;
@@ -2048,13 +2617,36 @@
           if (c.authorId === user.userId) all.push(Object.assign({}, c, { postId: p.id, postTitle: p.title }));
         });
       });
+      reviewComments.forEach(function (c) {
+        if (c.authorId !== user.userId) return;
+        const r = profReviews.find(function (x) { return x.id === c.reviewId; });
+        if (r) all.push(Object.assign({}, c, { reviewId: r.id, postTitle: 'review of ' + r.prof + ' (' + parseCourse(r.course).code + ')' }));
+      });
+      all.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
       const html = all.length ? all.map(function (c) {
-        return `<button class="menu-item" type="button" data-post-id="${escapeHtml(c.postId)}">
+        const target = c.reviewId ? `data-rv-goto="${escapeHtml(c.reviewId)}"` : `data-post-id="${escapeHtml(c.postId)}"`;
+        return `<button class="menu-item" type="button" ${target}>
           <div><div style="font-size:13px;">${escapeHtml(c.text)}</div>
-          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:4px;">on “${escapeHtml(c.postTitle)}”</div></div>
+          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:4px;">on ${c.reviewId ? escapeHtml(c.postTitle) : '“' + escapeHtml(c.postTitle) + '”'}</div></div>
           <span class="right">›</span></button>`;
       }).join('') : emptyHTML('No comments yet', 'Comments you leave will show up here.');
       openMyModal('My comments (' + all.length + ')', html);
+    } else if (key === 'reviews') {
+      const mine = profReviews.filter(function (r) { return isMineReview(r); });
+      const html = mine.length ? mine.map(function (r) {
+        const n = (r.comments || []).length, nw = newCount(r);
+        const pc = parseCourse(r.course);
+        return `<div class="myrv">
+          <div class="myrv-h"><div><b>${escapeHtml(r.prof)}</b><div class="myrv-m">${escapeHtml(pc.code + (pc.name ? ' · ' + pc.name : ''))} · ${escapeHtml(r.quarter)}</div></div><span class="ps-sc">${Number(r.rating).toFixed(1)}</span></div>
+          ${tagsHTML(r)}
+          <p>${escapeHtml(r.text.length > 140 ? r.text.slice(0, 137) + '…' : r.text)}</p>
+          <div class="myrv-f"><span class="myrv-c">${n ? plural(n, 'comment') : 'No comments yet'}${nw ? ' · <b>' + nw + ' new</b>' : ''}</span>
+          <span class="myrv-a"><button class="text-action" type="button" data-myrv="view" data-id="${escapeHtml(r.id)}">View</button>
+          <button class="text-action" type="button" data-myrv="edit" data-id="${escapeHtml(r.id)}">Edit</button>
+          <button class="text-action danger" type="button" data-myrv="del" data-id="${escapeHtml(r.id)}">Delete</button></span></div>
+        </div>`;
+      }).join('') : emptyHTML('No reviews yet', 'Reviews you write will show up here. Only you can see this list.', 'Write a review', 'review');
+      openMyModal('My reviews (' + mine.length + ')', html);
     } else if (key === 'saved') {
       const saved = stories.filter(function (s) { return account().savedStoryIds.indexOf(s.id) >= 0; });
       const html = saved.length ? saved.map(function (s) {
@@ -2162,7 +2754,7 @@
     navTo('stories');
   }
 
-  document.getElementById('profModalCancel').onclick = function () { document.getElementById('profModalOverlay').classList.remove('show'); };
+  document.getElementById('profModalCancel').onclick = function () { editingReviewId = null; document.getElementById('profModalOverlay').classList.remove('show'); };
   document.getElementById('profModalOverlay').addEventListener('click', function (e) { if (e.target === e.currentTarget) e.currentTarget.classList.remove('show'); });
   document.getElementById('profModalPost').onclick = function () { busy(this, submitReview); };
   async function submitReview() {
@@ -2173,23 +2765,56 @@
       document.getElementById('profClassErr').scrollIntoView({ block: 'center' });
       return;
     }
-    const rr = await Store.createReview({
+    if (checkDupReview()) { document.getElementById('profDupNote').scrollIntoView({ block: 'center' }); return; }
+    const prevRaw = document.getElementById('profRevPrev').value.trim();
+    const prevCode = prevRaw ? normCode(prevRaw) : '';
+    if (prevRaw && !/\d/.test(prevCode)) {
+      alert('For "What did you take before this class?", please write a course code like MATH 142, or leave it empty.');
+      document.getElementById('profRevPrev').focus();
+      return;
+    }
+    const typedCode = document.getElementById('profRevCourse').value;
+    const typedName = document.getElementById('profRevCourseName').value.trim().replace(/\s+/g, ' ');
+    const known = courseIndex()[codeKey(typedCode)];
+    const code = known ? known.code : (normCode(typedCode) || 'Course');
+    const name = known && known.name ? known.name : typedName;
+    const payload = {
       prof: prof,
-      course: (function () {
-        const typedCode = document.getElementById('profRevCourse').value;
-        const typedName = document.getElementById('profRevCourseName').value.trim().replace(/\s+/g, ' ');
-        const known = courseIndex()[codeKey(typedCode)];
-        const code = known ? known.code : (normCode(typedCode) || 'Course');
-        const name = known && known.name ? known.name : typedName;
-        return code + (name ? ' · ' + name : '');
-      })(),
+      course: code + (name ? ' · ' + name : ''),
       quarter: profQuarter + ' ' + document.getElementById('profRevYear').value,
       rating: parseInt(document.getElementById('profRevRating').value, 10),
-      text: document.getElementById('profRevText').value.trim() || '(no experience shared)'
-    });
-    if (rr && rr.ok === false) { alert('Could not post: ' + rr.error); return; }
+      text: document.getElementById('profRevText').value.trim() || '(no experience shared)',
+      tags: profTags.slice()
+    };
+    const wasEdit = editingReviewId;
+    const rr = wasEdit ? await Store.updateReview(wasEdit, payload) : await Store.createReview(payload);
+    if (rr && rr.ok === false) {
+      if (rr.duplicate) {
+        const box = document.getElementById('profDupNote');
+        box.textContent = rr.error; box.hidden = false; box.scrollIntoView({ block: 'center' });
+        return;
+      }
+      alert('Could not ' + (wasEdit ? 'save' : 'post') + ': ' + rr.error);
+      return;
+    }
+    // "What did you take before this class?" becomes a suggestion (or a Correct vote if it already exists).
+    if (prevCode && codeKey(prevCode) !== codeKey(code)) {
+      const pk = courseIndex()[codeKey(prevCode)];
+      const lr = await Store.addCourseLink({ fromCode: pk && pk.code ? pk.code : prevCode, toCode: code });
+      if (lr && lr.duplicate && lr.link && !lr.reverse && !lr.link.mine && lr.link.myVote !== 1) {
+        await Store.voteCourseLink(lr.link.id, 1);
+      }
+    }
+    editingReviewId = null;
     document.getElementById('profModalOverlay').classList.remove('show');
-    navTo('professors');
+    const h = hashPage();
+    if (wasEdit || h.name === 'class') {
+      await refreshCache();
+      if (h.name === 'post') navTo('professors'); else renderPage(h.name);
+      showToast(wasEdit ? 'Review updated.' : 'Review posted.');
+    } else {
+      navTo('professors');
+    }
   }
 
   document.getElementById('reportCancel').onclick = function () { document.getElementById('reportModalOverlay').classList.remove('show'); };
@@ -2197,7 +2822,9 @@
     busy(this, async function () {
       if (reportTarget) await Store.report(reportTarget.kind, reportTarget.id, document.getElementById('reportReason').value);
       document.getElementById('reportModalOverlay').classList.remove('show');
-      navTo(hashPage().name === 'post' ? 'board' : hashPage().name);
+      const h = hashPage();
+      if (h.name === 'post') navTo('board'); else goPage(h.name, h.extra);
+      showToast('Thanks. Your report was sent.');
     });
   };
   document.getElementById('reportModalOverlay').addEventListener('click', function (e) { if (e.target === e.currentTarget) e.currentTarget.classList.remove('show'); });
@@ -2205,7 +2832,32 @@
 
   document.getElementById('myModalClose').onclick = function () { document.getElementById('myModalOverlay').classList.remove('show'); };
   document.getElementById('myModalOverlay').addEventListener('click', function (e) { if (e.target === e.currentTarget) e.currentTarget.classList.remove('show'); });
-  document.getElementById('myModalBody').addEventListener('click', function (e) {
+  document.getElementById('myModalBody').addEventListener('click', async function (e) {
+    const closeMy = function () { document.getElementById('myModalOverlay').classList.remove('show'); };
+    const go = e.target.closest('[data-rv-goto]');
+    if (go) {
+      closeMy();
+      openReviewOnClass(profReviews.find(function (x) { return String(x.id) === String(go.dataset.rvGoto); }));
+      return;
+    }
+    const mr = e.target.closest('[data-myrv]');
+    if (mr) {
+      const r = profReviews.find(function (x) { return String(x.id) === String(mr.dataset.id); });
+      if (!r) return;
+      if (mr.dataset.myrv === 'view') { closeMy(); openReviewOnClass(r); return; }
+      if (mr.dataset.myrv === 'edit') { closeMy(); openProfModal({ edit: r }); return; }
+      if (mr.dataset.myrv === 'del') {
+        if (!confirm('Delete this review? Its comments will be deleted too. This cannot be undone.')) return;
+        const res = await Store.deleteReview(r.id);
+        if (res && res.ok === false) { alert('Could not delete: ' + res.error); return; }
+        await refreshCache();
+        handleMy('reviews');
+        if (hashPage().name === 'my') renderMyPage();
+        showToast('Review deleted.');
+      }
+      return;
+    }
+    if (e.target.closest('[data-empty-action="review"]')) { closeMy(); openProfModal(); return; }
     const postRow = e.target.closest('[data-post-id]');
     if (postRow) {
       document.getElementById('myModalOverlay').classList.remove('show');
@@ -2228,7 +2880,11 @@
 
   document.getElementById('alertsList').addEventListener('click', function (e) {
     const row = e.target.closest('[data-post-id]');
-    if (row && row.dataset.postId) openPost(row.dataset.postId);
+    if (!row) return;
+    if (row.dataset.postId) { openPost(row.dataset.postId); return; }
+    if (row.dataset.reviewId) {
+      openReviewOnClass(profReviews.find(function (x) { return String(x.id) === String(row.dataset.reviewId); }));
+    }
   });
 
   let searchTimer = null;

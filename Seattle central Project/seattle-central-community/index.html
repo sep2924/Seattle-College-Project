@@ -56,6 +56,7 @@
     <section class="page" id="page-board"></section>
     <section class="page" id="page-stories"></section>
     <section class="page" id="page-professors"></section>
+    <section class="page" id="page-class"></section>
     <section class="page" id="page-my"></section>
     <section class="page" id="page-post">
       <div class="post-detail-head">
@@ -307,6 +308,7 @@
       <div class="pk-note">Everyone who picks this class after you will see this name. Please use the official name.</div>
       <div class="modal-actions" style="margin-top:10px"><button class="btn btn-ghost" type="button" id="profClassAddCancel">Cancel</button><button class="btn btn-primary" type="button" id="profClassAddSave">Add class</button></div>
     </div>
+    <div id="profDupNote" class="dup-note" role="status" hidden></div>
     <label id="profQuarterLabel">Quarter taken</label>
     <div class="q-pills" id="profQuarterPills" role="group" aria-labelledby="profQuarterLabel">
       <button type="button" class="q-pill" data-q="Winter">Winter</button>
@@ -324,8 +326,14 @@
       <option value="2">2 – Below average</option>
       <option value="1">1 – Poor</option>
     </select>
+    <label id="profTagsLabel">Tags <span class="lbl-opt">(optional, up to 5)</span></label>
+    <div class="tag-pick" id="profTagPick" role="group" aria-labelledby="profTagsLabel"></div>
     <label for="profRevText">Your experience</label>
-    <textarea id="profRevText" placeholder="What was the class or professor like?"></textarea>
+    <textarea id="profRevText" placeholder="What should other students know about this class?"></textarea>
+    <label for="profRevPrev">What did you take before this class? <span class="lbl-opt">(optional)</span></label>
+    <input type="text" id="profRevPrev" list="courseCodeList" maxlength="20" autocomplete="off" placeholder="e.g. MATH 142">
+    <div class="pk-note">This shows up as a suggestion on the class page. Other students confirm it.</div>
+    <div class="rv-remind">Review the class, not the person. No personal attacks, names of other students, or private info.</div>
     <div class="modal-actions">
       <button class="btn btn-ghost" type="button" id="profModalCancel">Cancel</button>
       <button class="btn btn-primary" type="button" id="profModalPost">Post anonymously</button>
