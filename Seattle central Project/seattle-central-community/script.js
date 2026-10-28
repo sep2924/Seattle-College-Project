@@ -346,10 +346,75 @@
     return items;
   }
 
+  // ---- "Install the app" (iPhone only, not shown once opened from the home screen) ----
+  const INSTALL_KEY = 'scc-install-dismissed';
+  const INSTALL_SNOOZE = 14 * 24 * 60 * 60 * 1000;
+  function iphoneInfo() {
+    const ua = navigator.userAgent || '';
+    if (!/iPhone|iPod/.test(ua)) return null;
+    if (window.navigator.standalone === true) return null;
+    try { if (window.matchMedia('(display-mode: standalone)').matches) return null; } catch (e) {}
+    const m = ua.match(/OS (\d+)_/);
+    return {
+      ios: m ? parseInt(m[1], 10) : 0,
+      safari: !/CriOS|FxiOS|EdgiOS|OPiOS|GSA\/|Instagram|FBAN|FBAV|LinkedInApp|Line\//.test(ua)
+    };
+  }
+  function installSnoozed() {
+    try { const t = parseInt(localStorage.getItem(INSTALL_KEY) || '0', 10); return t && Date.now() - t < INSTALL_SNOOZE; } catch (e) { return false; }
+  }
+  function installBannerHTML() {
+    if (!iphoneInfo() || installSnoozed()) return '';
+    return `<div class="ins-banner" id="insBanner">
+        <div class="ins-top"><div class="ins-icon" aria-hidden="true">S</div>
+          <div class="ins-txt"><b>Get the app on your iPhone</b><span>Opens full screen from your home screen. Free, no App Store needed.</span></div>
+          <button type="button" class="ins-x" data-install="later" aria-label="Not now">✕</button></div>
+        <div class="ins-acts"><button type="button" class="btn btn-primary" data-install="open">Install app</button>
+          <button type="button" class="btn btn-ghost" data-install="later">Not now</button></div>
+      </div>`;
+  }
+  function openInstall() {
+    const info = iphoneInfo();
+    if (!info) return;
+    const step = function (n, html) { return '<div class="ins-step"><span class="ins-n">' + n + '</span><p>' + html + '</p></div>'; };
+    const newSafari = info.ios >= 26;
+    let html = '';
+    if (!info.safari) {
+      html = '<p class="ins-note">This works in <b>Safari</b>. Copy the link below, open Safari, and paste it there. Then tap "Install app" again.</p>' +
+        '<button type="button" class="btn btn-ghost ins-copy" data-install="copy">Copy link</button>';
+    } else {
+      html = step(1, newSafari ? 'Tap the <b>•••</b> button at the bottom right, then <b>Share</b>'
+                               : 'Tap the <b>Share</b> button (square with an arrow) at the bottom of Safari') +
+             step(2, 'Scroll down and tap <b>Add to Home Screen</b>') +
+             step(3, 'Tap <b>Add</b>');
+    }
+    document.getElementById('insBody').innerHTML = html;
+    const arrow = document.getElementById('insArrow');
+    arrow.hidden = !info.safari;
+    arrow.classList.toggle('mid', !newSafari);
+    document.getElementById('installOverlay').classList.add('show');
+  }
+  document.addEventListener('click', function (e) {
+    const b = e.target.closest('[data-install]');
+    if (!b) return;
+    const a = b.dataset.install;
+    if (a === 'open') openInstall();
+    else if (a === 'later') {
+      try { localStorage.setItem(INSTALL_KEY, String(Date.now())); } catch (err) {}
+      const ban = document.getElementById('insBanner'); if (ban) ban.remove();
+    } else if (a === 'copy') {
+      const url = location.origin + '/';
+      (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { showToast('Link copied. Paste it in Safari.'); }, function () { showToast(url); });
+    }
+  });
+  document.getElementById('insDone').onclick = function () { document.getElementById('installOverlay').classList.remove('show'); };
+  document.getElementById('installOverlay').addEventListener('click', function (e) { if (e.target === e.currentTarget) e.currentTarget.classList.remove('show'); });
+
   function renderHome() {
     const el = document.getElementById('page-home');
     const feed = mixedFeed().slice(0, 12);
     el.innerHTML = `
+      ${installBannerHTML()}
       ${hotHTML()}
       <div class="section-head"><h2>Boards</h2><a href="#board">See all</a></div>
       <div class="board-grid">
@@ -1339,6 +1404,7 @@
         <button class="menu-item" type="button" data-my="saved">Saved stories <span class="right">${account().savedStoryIds.length} ›</span></button>
         <button class="menu-item" type="button" data-page="timer">Study timer <span class="right">Private ›</span></button>
         <button class="menu-item" type="button" data-page="schedule">Class schedule <span class="right">Private ›</span></button>
+        ${iphoneInfo() ? '<button class="menu-item" type="button" data-install="open">Install the app <span class="right">iPhone ›</span></button>' : ''}
         <button class="menu-item" type="button" data-my="notif">Notification settings <span class="right">›</span></button>
         <button class="menu-item" type="button" data-my="verify">Email <span class="right">Verified ✓</span></button>
         <a class="menu-item" href="guidelines.html">Community guidelines <span class="right">›</span></a>

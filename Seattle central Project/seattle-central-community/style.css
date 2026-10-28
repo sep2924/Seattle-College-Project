@@ -1138,3 +1138,28 @@
 .myrv-c{ font-size:12px; color:var(--ink-soft); }
 .myrv-c b{ color:#C2354B; }
 .myrv-a{ display:flex; gap:14px; }
+
+  /* ---- Install the app (iPhone) ---- */
+  .ins-banner{ margin:14px 0 4px; padding:14px; border-radius:var(--radius); background:var(--mint-soft); border:1px solid #C9D6EF; }
+  .ins-top{ display:flex; gap:12px; align-items:flex-start; }
+  .ins-icon{ width:40px; height:40px; flex:none; border-radius:10px; background:var(--mint); color:#fff; font-family:var(--font-display); font-weight:700; display:flex; align-items:center; justify-content:center; font-size:18px; }
+  .ins-txt{ flex:1; min-width:0; color:var(--mint); }
+  .ins-txt b{ display:block; font-size:15px; }
+  .ins-txt span{ display:block; font-size:13px; line-height:1.4; margin-top:2px; }
+  .ins-x{ background:none; border:0; color:var(--mint); font-size:16px; padding:2px 4px; cursor:pointer; }
+  .ins-acts{ display:flex; gap:8px; margin-top:12px; }
+  .ins-acts .btn-primary{ flex:1; }
+  .ins-overlay{ align-items:center; }
+  .ins-modal h3{ margin-top:0; }
+  .ins-step{ display:flex; gap:12px; align-items:center; padding:8px 0; }
+  .ins-step p{ margin:0; font-size:15px; line-height:1.45; }
+  .ins-n{ width:26px; height:26px; flex:none; border-radius:50%; background:var(--mint-soft); color:var(--mint); font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center; }
+  .ins-note{ font-size:15px; line-height:1.5; margin:0 0 12px; }
+  .ins-copy{ width:100%; }
+  .ins-arrow{ position:fixed; right:12px; bottom:calc(10px + env(safe-area-inset-bottom, 0px)); z-index:1000; color:#fff; background:var(--mint); padding:8px 12px; border-radius:999px; box-shadow:0 4px 14px rgba(0,0,0,.25); display:flex; align-items:flex-end; gap:6px; font-weight:700; font-size:14px; pointer-events:none; animation: insBob 1.2s ease-in-out infinite; }
+  .ins-arrow.mid{ right:auto; left:50%; transform:translateX(-50%); }
+  .ins-arrow.mid .ins-arrow-ic{ transform:rotate(45deg); }
+  .ins-arrow[hidden]{ display:none; }
+  .ins-arrow-ic{ font-size:20px; line-height:1; }
+  @keyframes insBob{ 0%,100%{ margin-bottom:0; } 50%{ margin-bottom:-6px; } }
+  @media (prefers-reduced-motion: reduce){ .ins-arrow{ animation:none; } }
