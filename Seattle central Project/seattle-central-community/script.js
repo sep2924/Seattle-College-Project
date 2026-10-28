@@ -377,21 +377,20 @@
     const info = iphoneInfo();
     if (!info) return;
     const step = function (n, html) { return '<div class="ins-step"><span class="ins-n">' + n + '</span><p>' + html + '</p></div>'; };
-    const newSafari = info.ios >= 26;
     let html = '';
     if (!info.safari) {
       html = '<p class="ins-note">This works in <b>Safari</b>. Copy the link below, open Safari, and paste it there. Then tap "Install app" again.</p>' +
         '<button type="button" class="btn btn-ghost ins-copy" data-install="copy">Copy link</button>';
     } else {
-      html = step(1, newSafari ? 'Tap the <b>•••</b> button at the bottom right, then <b>Share</b>'
-                               : 'Tap the <b>Share</b> button (square with an arrow) at the bottom of Safari') +
-             step(2, 'Scroll down and tap <b>Add to Home Screen</b>') +
-             step(3, 'Tap <b>Add</b>');
+      html = step(1, 'Tap the <b>three dots (•••)</b> at the bottom right of Safari') +
+             step(2, 'Tap <b>Share</b>') +
+             step(3, 'Scroll down and tap <b>Add to Home Screen</b>') +
+             step(4, 'Tap <b>Add</b>') +
+             '<p class="ins-hint">No three dots? Tap the Share button (square with an arrow) at the bottom instead.</p>';
     }
     document.getElementById('insBody').innerHTML = html;
     const arrow = document.getElementById('insArrow');
     arrow.hidden = !info.safari;
-    arrow.classList.toggle('mid', !newSafari);
     document.getElementById('installOverlay').classList.add('show');
   }
   document.addEventListener('click', function (e) {
