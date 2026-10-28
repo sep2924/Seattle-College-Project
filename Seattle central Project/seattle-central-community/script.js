@@ -1821,10 +1821,14 @@
     renderTagPick();
     if (edit) {
       const pc = parseCourse(edit.course);
-      document.getElementById('profRevCourse').value = pc.code;
-      document.getElementById('profRevCourseName').value = pc.name;
-      document.getElementById('profRevCourseName').readOnly = !!pc.name;
-      pkPicked = true;
+      if (pc.code) {
+        document.getElementById('profRevCourse').value = pc.code;
+        document.getElementById('profRevCourseName').value = pc.name;
+        document.getElementById('profRevCourseName').readOnly = !!pc.name;
+        pkPicked = true;
+      } else {
+        pkPicked = false;
+      }
       renderClassPicker();
     } else if (opts.classKey) {
       const e = courseIndex()[opts.classKey];
