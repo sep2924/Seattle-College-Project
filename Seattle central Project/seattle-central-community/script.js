@@ -505,15 +505,17 @@
     return (q.classes || []).reduce(function (s, c) { return s + (parseFloat(c.credits) || 0); }, 0);
   }
   function planStats(plan) {
-    let credits = 0, pts = 0, w = 0;
+    let credits = 0, pts = 0, w = 0, now = 0, planned = 0;
     (plan.quarters || []).forEach(function (q) {
       if (q.status === 'done') credits += quarterCredits(q);
+      else if (q.status === 'now') now += quarterCredits(q);
+      else planned += quarterCredits(q);
       (q.classes || []).forEach(function (c) {
         const g = gradePoints(c.grade), cr = parseFloat(c.credits) || 0;
         if (g !== null && cr > 0) { pts += g * cr; w += cr; }
       });
     });
-    return { credits: credits, gpa: w ? (pts / w).toFixed(2) : '--' };
+    return { credits: credits, now: now, planned: planned, total: credits + now + planned, gpa: w ? (pts / w).toFixed(2) : '--' };
   }
   function num(n) { return String(Math.round(n * 10) / 10); }
   function chipsHTML(list, cls) {
@@ -527,8 +529,18 @@
   }
   function statsHTML(p) {
     const st = planStats(p);
-    return '<div class="cw-stats"><div class="cw-stat"><b>' + num(st.credits) + '</b><span>credits done</span></div>' +
-      '<div class="cw-stat"><b>' + st.gpa + '</b><span>GPA so far</span></div></div>';
+    const pct = function (n) { return st.total ? Math.round(n / st.total * 1000) / 10 : 0; };
+    const left = st.now + st.planned;
+    return '<div class="cw-prog">' +
+      '<div class="cw-prog-h"><b>' + num(st.credits) + '</b><span>of ' + num(st.total) + ' credits on ' + (p.id === myPlanId() ? 'your' : 'this') + ' plan</span></div>' +
+      '<div class="cw-bar" role="img" aria-label="' + num(st.credits) + ' credits done, ' + num(st.now) + ' in progress, ' + num(st.planned) + ' planned">' +
+        '<i class="d" style="width:' + pct(st.credits) + '%"></i><i class="n" style="width:' + pct(st.now) + '%"></i><i class="p" style="width:' + pct(st.planned) + '%"></i></div>' +
+      '<div class="cw-stats cw-stats4">' +
+        '<div class="cw-stat"><b>' + num(st.credits) + '</b><span><em class="dot d"></em>Done</span></div>' +
+        '<div class="cw-stat"><b>' + num(st.now) + '</b><span><em class="dot n"></em>Now</span></div>' +
+        '<div class="cw-stat"><b>' + num(st.planned) + '</b><span><em class="dot p"></em>Planned</span></div>' +
+        '<div class="cw-stat"><b>' + st.gpa + '</b><span>GPA</span></div></div>' +
+      (left > 0 ? '<div class="cw-left">' + num(left) + ' credits to go</div>' : '') + '</div>';
   }
   function planSpan(p) {
     const qs = sortedQuarters(p);
