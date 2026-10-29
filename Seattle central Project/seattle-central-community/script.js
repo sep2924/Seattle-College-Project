@@ -335,6 +335,7 @@
     try { plans = await Store.listPlans(); } catch (e) { plans = []; }
     await loadReviewComments();
     try { courseLinks = await Store.listCourseLinks(); } catch (e) { courseLinks = []; }
+    try { announcement = await Store.latestAnnouncement(); } catch (e) { announcement = null; }
   }
 
   function mixedFeed() {
@@ -345,6 +346,28 @@
     items.sort(function (a, b) { return b.ts - a.ts; });
     return items;
   }
+
+  // ---- Announcement on Home (posted in Supabase Table Editor > announcements) ----
+  let announcement = null;
+  const ANN_KEY = 'scc-ann-dismissed';
+  function announcementHTML() {
+    const a = announcement;
+    if (!a || !a.title) return '';
+    try { if (localStorage.getItem(ANN_KEY) === a.id) return ''; } catch (e) {}
+    const url = a.linkUrl;
+    const ext = /^https?:\/\//i.test(url);
+    const link = url && (ext || url.charAt(0) === '#')
+      ? '<a class="ann-link" href="' + escapeHtml(url) + '"' + (ext ? ' target="_blank" rel="noopener"' : '') + '>' + escapeHtml(a.linkText || 'Learn more') + ' ›</a>' : '';
+    return '<div class="ann-card" id="annCard" role="status">' +
+      '<div class="ann-top"><span class="ann-label">📣 Announcement</span><button type="button" class="ann-x" data-ann-x aria-label="Dismiss announcement">✕</button></div>' +
+      '<b class="ann-title">' + escapeHtml(a.title) + '</b>' +
+      (a.message ? '<p class="ann-msg">' + escapeHtml(a.message) + '</p>' : '') + link + '</div>';
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('[data-ann-x]') || !announcement) return;
+    try { localStorage.setItem(ANN_KEY, announcement.id); } catch (err) {}
+    const c = document.getElementById('annCard'); if (c) c.remove();
+  });
 
   // ---- "Install the app" (iPhone only, not shown once opened from the home screen) ----
   const INSTALL_KEY = 'scc-install-dismissed';
@@ -413,6 +436,7 @@
     const el = document.getElementById('page-home');
     const feed = mixedFeed().slice(0, 12);
     el.innerHTML = `
+      ${announcementHTML()}
       ${installBannerHTML()}
       ${hotHTML()}
       <div class="section-head"><h2>Boards</h2><a href="#board">See all</a></div>

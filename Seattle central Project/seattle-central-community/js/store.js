@@ -922,6 +922,26 @@
     },
 
     // ---- Class requirements added by students ("take FROM before TO"), confirmed by votes ----
+    // Newest live announcement (you post these in Supabase Table Editor > announcements).
+    latestAnnouncement: async function () {
+      let row = null;
+      if (this.mode === 'supabase') {
+        try {
+          const { data, error } = await this.supabase.from('announcements')
+            .select('id,title,message,link_text,link_url,created_at').order('created_at', { ascending: false }).limit(1);
+          if (error || !data || !data.length) return null;
+          row = data[0];
+        } catch (e) { return null; }
+      } else {
+        const now = Date.now();
+        row = (this.db.announcements || []).filter(function (x) { return x.active !== false && (!x.ends_at || new Date(x.ends_at).getTime() > now); })
+          .sort(function (x, y) { return new Date(y.created_at) - new Date(x.created_at); })[0] || null;
+        if (!row) return null;
+      }
+      return { id: String(row.id), title: row.title || '', message: row.message || '',
+        linkText: row.link_text || '', linkUrl: row.link_url || '' };
+    },
+
     listCourseLinks: async function () {
       const me = this.session && !this.guest ? this.session.userId : null;
       if (this.mode === 'supabase') {
