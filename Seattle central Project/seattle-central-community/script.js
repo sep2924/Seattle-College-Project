@@ -389,7 +389,7 @@
   function installBannerHTML() {
     if (!iphoneInfo() || installSnoozed()) return '';
     return `<div class="ins-banner" id="insBanner">
-        <div class="ins-top"><div class="ins-icon" aria-hidden="true">S</div>
+        <div class="ins-top"><div class="ins-icon" aria-hidden="true"><img src="icons/tiger.svg" alt=""></div>
           <div class="ins-txt"><b>Get the app on your iPhone</b><span>Opens full screen from your home screen. Free, no App Store needed.</span></div>
           <button type="button" class="ins-x" data-install="later" aria-label="Not now">✕</button></div>
         <div class="ins-acts"><button type="button" class="btn btn-primary" data-install="open">Install app</button>
