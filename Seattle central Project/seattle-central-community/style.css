@@ -1196,3 +1196,8 @@
 
   /* Tiger logo inside the blue mark */
   .mark img, .ins-icon img{ width:88%; height:88%; display:block; }
+
+  /* Keep line breaks, blank lines and indents exactly as people typed them */
+  .ut, .post-body, .comment .c-text{ white-space:pre-wrap; overflow-wrap:anywhere; }
+  .comment-input-row input{ min-width:0; }
+  .comment-input-row button{ flex:none; }

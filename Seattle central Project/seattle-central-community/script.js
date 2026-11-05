@@ -64,6 +64,8 @@
     if (top.classList.contains('cw-overlay')) top.remove(); else top.classList.remove('show');
   });
   function saveAccount() { Store.savePrivate(); }
+  // Drop empty lines at the start and end, but keep the first line's indent.
+  function keepIndent(v) { return String(v || '').replace(/^(\s*\n)+/, '').replace(/\s+$/, ''); }
 
   function timeAgo(ts) {
     const s = Math.floor((Date.now() - ts) / 1000);
@@ -150,7 +152,7 @@
       <div class="story-route">${escapeHtml(s.from)}<span class="arrow">→</span>${escapeHtml(s.to)}</div>
       <h3>${escapeHtml(s.major)}</h3>
       <div class="stats-row"><div class="story-stat">GPA ${escapeHtml(s.gpa)}</div><span class="story-time">${escapeHtml(timeAgo(s.ts))}</span>${sampleBadge(s)}</div>
-      <p>${escapeHtml(s.text)}</p>
+      <p class="ut">${escapeHtml(s.text)}</p>
       ${Store.guest ? '' : `<div class="safety-row">
         <button class="story-save-btn ${saved ? 'saved' : ''}" type="button" data-story-id="${escapeHtml(s.id)}">${saved ? '★ Saved' : '☆ Save'}</button>
         ${mine ? '' : `<button class="text-action" type="button" data-report="story" data-id="${escapeHtml(s.id)}">Report</button>
@@ -303,7 +305,7 @@
       </div>
       <div class="review-meta"><span>${escapeHtml(r.quarter)}</span><span>·</span><span>${escapeHtml(timeAgo(r.ts))}${r.edited ? ' · edited' : ''}</span>${isMineReview(r) ? '<span class="cw-mine">Your review</span>' : ''}${sampleBadge(r)}</div>
       ${tagsHTML(r)}
-      <p>${escapeHtml(r.text)}</p>
+      <p class="ut">${escapeHtml(r.text)}</p>
       ${reviewActionsHTML(r)}
       ${rvWrapHTML(r)}
     </article>`;
@@ -603,7 +605,7 @@
       const own = me && c.authorId === me;
       return '<div class="cw-cm"><div class="cw-cm-h"><b>' + escapeHtml(label) + (own ? ' (you)' : '') + '</b><span>' + escapeHtml(timeAgo(c.ts)) + '</span>' +
         (own ? '<button type="button" class="cw-edit-q" data-cw="cm-del" data-id="' + escapeHtml(c.id) + '">Delete</button>' : '') + '</div>' +
-        '<div>' + escapeHtml(c.text) + '</div></div>';
+        '<div class="ut">' + escapeHtml(c.text) + '</div></div>';
     }).join('') : '<div class="cw-b" style="padding:4px 0 10px">No comments yet.</div>';
   }
 
@@ -1072,7 +1074,7 @@
     return '<div class="ps-row" data-review-id="' + escapeHtml(r.id) + '"><div class="t"><div><h4>' +
       (showCourse && ck ? '<button type="button" class="ps-class-link" data-class-open="' + escapeHtml(ck) + '">' + title + ' <span aria-hidden="true">›</span></button>' : title) + '</h4>' +
       '<div class="m">' + escapeHtml(showCourse ? r.quarter : '') + (showCourse ? ' · ' : '') + escapeHtml(timeAgo(r.ts)) + (r.edited ? ' · edited' : '') + '</div></div>' +
-      '<span class="ps-sc">' + Number(r.rating).toFixed(1) + '</span></div>' + tagsHTML(r) + '<p>' + escapeHtml(r.text) + '</p>' +
+      '<span class="ps-sc">' + Number(r.rating).toFixed(1) + '</span></div>' + tagsHTML(r) + '<p class="ut">' + escapeHtml(r.text) + '</p>' +
       reviewActionsHTML(r) + rvWrapHTML(r) + '</div>';
   }
   function psSuggestions() {
@@ -1128,7 +1130,7 @@
         const rs = recent(p.reviews), open = psExp[p.key + '|' + psSel], avg = avgOf(p.reviews);
         return '<div class="ps-row"><div class="t"><div><h4>' + escapeHtml(p.name) + '</h4><div class="m">' + avg.toFixed(1) + ' avg · ' + plural(p.reviews.length, 'review') + ' · last taught ' + escapeHtml(rs[0].quarter) + '</div></div>' +
           '<span class="ps-sc">' + avg.toFixed(1) + '</span></div>' +
-          (open ? rs.map(function (r) { return '<p>' + escapeHtml(r.text) + '<span class="ps-sm"> · ' + escapeHtml(r.quarter) + ' · ' + Number(r.rating).toFixed(1) + '</span></p>'; }).join('')
+          (open ? rs.map(function (r) { return '<p class="ut">' + escapeHtml(r.text) + '<span class="ps-sm"> · ' + escapeHtml(r.quarter) + ' · ' + Number(r.rating).toFixed(1) + '</span></p>'; }).join('')
                 : '<p>' + escapeHtml(rs[0].text.length > 160 ? rs[0].text.slice(0, 157) + '…' : rs[0].text) + '</p>') +
           (p.reviews.length > 1 ? '<button type="button" class="ps-link" data-pexp="' + escapeHtml(p.key) + '">' + (open ? 'Show less' : 'See all ' + p.reviews.length + ' reviews') + '</button>' : '') + '</div>';
       }).join('');
@@ -2839,7 +2841,7 @@
   async function submitPost() {
     const board = document.getElementById('modalBoard').value;
     const title = document.getElementById('modalTitleInput').value.trim();
-    const body = document.getElementById('modalBody').value.trim();
+    const body = keepIndent(document.getElementById('modalBody').value);
     if (!title) { document.getElementById('modalTitleInput').focus(); return; }
     if (editingPostId != null) {
       const ur = await Store.updatePost(editingPostId, { board: board, title: title, body: body || '(no description)' });
@@ -2869,7 +2871,7 @@
       to: to,
       major: document.getElementById('storyMajor').value.trim() || 'Undeclared',
       gpa: document.getElementById('storyGpa').value.trim() || '—',
-      text: document.getElementById('storyText').value.trim() || '(no story shared)'
+      text: keepIndent(document.getElementById('storyText').value) || '(no story shared)'
     });
     if (sr && sr.ok === false) { alert('Could not post: ' + sr.error); return; }
     document.getElementById('storyModalOverlay').classList.remove('show');
@@ -2905,7 +2907,7 @@
       course: code + (name ? ' · ' + name : ''),
       quarter: profQuarter + ' ' + document.getElementById('profRevYear').value,
       rating: parseInt(document.getElementById('profRevRating').value, 10),
-      text: document.getElementById('profRevText').value.trim() || '(no experience shared)',
+      text: keepIndent(document.getElementById('profRevText').value) || '(no experience shared)',
       tags: profTags.slice()
     };
     const wasEdit = editingReviewId;
