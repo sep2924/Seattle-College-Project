@@ -12,6 +12,18 @@
   }
 
   const boardNames = Store.boardNames;
+  // Professor reviews are read-only for now. Set to false to open writing, comments and class requirements again.
+  const REVIEWS_LOCKED = true;
+  const REVIEWS_SOON_MSG = 'New reviews, comments and class requirements are paused while we improve professor reviews. You can still read everything here.';
+  if (REVIEWS_LOCKED) {
+    document.querySelectorAll('.dn-item[data-page="professors"], .navbtn[data-page="professors"]').forEach(function (btn) {
+      const t = document.createElement('span'); t.className = 'soon-tag'; t.textContent = 'Soon'; btn.appendChild(t);
+    });
+  }
+  function reviewsSoonHTML() {
+    return '<div class="rv-soon" role="status"><div class="rv-soon-l">🔒 Coming soon</div><b>New reviews are paused for now</b>' +
+      '<p>We\'re improving professor reviews. You can still read the reviews below. Writing and commenting will open again soon.</p></div>';
+  }
   let posts = [];
   let stories = [];
   let profReviews = [];
@@ -229,7 +241,7 @@
     const label = rcLabeler(r);
     const iWrote = isMineReview(r);
     h += '<div class="rv-thread">';
-    if (!n) h += '<p class="rv-none">No comments yet. Ask the reviewer a question.</p>';
+    if (!n && !REVIEWS_LOCKED) h += '<p class="rv-none">No comments yet. Ask the reviewer a question.</p>';
     list.forEach(function (c) {
       const who = label(c);
       const own = !!(me && c.authorId === me);
@@ -256,7 +268,9 @@
       }
       h += '</div></div>';
     });
-    h += Store.guest
+    h += REVIEWS_LOCKED
+      ? '<p class="rv-paused">Comments are paused for now. Coming soon.</p>'
+      : Store.guest
       ? '<button class="btn btn-ghost rv-login" type="button" data-guest-auth="login">Log in to comment</button>'
       : '<div class="rv-input"><input type="text" maxlength="1000" placeholder="Add a comment…" data-rv-input="' + escapeHtml(id) + '" aria-label="Add a comment"><button type="button" data-rv-send="' + escapeHtml(id) + '">Post</button></div>';
     return h + '</div>';
@@ -440,14 +454,14 @@
     el.innerHTML = `
       ${announcementHTML()}
       ${installBannerHTML()}
-      ${hotHTML()}
-      <div class="section-head"><h2>Boards</h2><a href="#board">See all</a></div>
+      <div class="section-head"><h2>Jump into a board</h2><a href="#board">See all</a></div>
       <div class="board-grid">
         ${Object.keys(boardNames).map(function (k) {
           return `<button class="board-cat" type="button" data-board="${k}"><span>${escapeHtml(boardNames[k])}</span></button>`;
         }).join('')}
         <button class="board-cat" type="button" data-board="coursework"><span>Course work</span></button>
       </div>
+      ${hotHTML()}
       <div class="section-head"><h2>Campus feed</h2></div>
       <div id="homeFeed">
         ${feed.length ? feed.map(feedItemHTML).join('') : emptyHTML('Nothing in the feed yet', 'Write the first post for your classmates.', 'Write a post', 'compose')}
@@ -1159,11 +1173,11 @@
     const sug = psSuggestions();
     if (!sug.length && browsing) {
       out.innerHTML = '<div class="ps-lbl" style="margin-top:2px"><button type="button" class="ps-link" data-psubj="" style="margin:0">← All subjects</button> · ' + escapeHtml(psSubj) + (subjName(psSubj) ? ' · ' + escapeHtml(subjName(psSubj)) : '') + '</div>' +
-        emptyHTML('No classes listed yet', 'Be the first to review a class in this subject.', 'Write a review', 'review');
+        (REVIEWS_LOCKED ? emptyHTML('No classes listed yet', 'Professor reviews are coming soon.') : emptyHTML('No classes listed yet', 'Be the first to review a class in this subject.', 'Write a review', 'review'));
       return;
     }
     if (!sug.length) {
-      out.innerHTML = emptyHTML('No reviews found', psMode === 'prof' ? 'Nobody has reviewed this professor yet.' : 'Nobody has reviewed this class yet.', 'Write a review', 'review');
+      out.innerHTML = emptyHTML('No reviews found', psMode === 'prof' ? 'Nobody has reviewed this professor yet.' : 'Nobody has reviewed this class yet.', REVIEWS_LOCKED ? '' : 'Write a review', 'review');
       return;
     }
     if (psSel && !sug.some(function (s) { return s.key === psSel; })) psSel = null;
@@ -1198,13 +1212,13 @@
       <div class="ps-wrap"><div class="ps-in"><span aria-hidden="true">🔍</span><input type="search" id="profSearchIn" autocomplete="off" value="${escapeHtml(psQ)}" aria-label="Search reviews"></div>
         <div class="ps-tabs" id="profSearchTabs"><button type="button" class="ps-tab" data-pmode="prof">Professor</button><button type="button" class="ps-tab" data-pmode="class">Class</button></div></div>
       <div id="profSearchOut"></div>
-      <button class="composer-box" id="profComposer" type="button">
+      ${REVIEWS_LOCKED ? reviewsSoonHTML() : `<button class="composer-box" id="profComposer" type="button">
         <div class="composer-row"><div class="composer-text">Review a professor or class…</div></div>
         <div class="composer-prompts"><span>Professor name</span><span>Course code</span><span>Quarter taken</span><span>Rating (1–5)</span></div>
         <span class="composer-btn">Write a review</span>
-      </button>
+      </button>`}
       <div class="prof-list" id="profList">
-        ${profReviews.map(function (r) { return profFullHTML(r); }).join('') || emptyHTML('No reviews yet', 'Be the first to review a professor.', 'Write a review', 'review')}
+        ${profReviews.map(function (r) { return profFullHTML(r); }).join('') || (REVIEWS_LOCKED ? emptyHTML('No reviews yet', 'Professor reviews are coming soon.') : emptyHTML('No reviews yet', 'Be the first to review a professor.', 'Write a review', 'review'))}
       </div>${guestFoot()}`;
     renderProfSearch();
   }
@@ -1275,7 +1289,9 @@
     let count = l.up + ' said correct' + (l.down ? ' · ' + l.down + ' said not right' : '');
     if (st === 'sug' && l.up < CONFIRM_VOTES) count += ' · needs ' + (CONFIRM_VOTES - l.up) + ' more';
     let acts = '';
-    if (l.mine) {
+    if (REVIEWS_LOCKED) {
+      acts = l.mine ? '<span class="lk-mine">Your suggestion</span>' : '';
+    } else if (l.mine) {
       acts = '<span class="lk-mine">Your suggestion</span><button class="text-action danger" type="button" data-ldel="' + escapeHtml(l.id) + '">Delete</button>';
     } else {
       acts = '<button type="button" class="vote-btn' + (l.myVote > 0 ? ' on' : '') + '" data-lvote="1" data-id="' + escapeHtml(l.id) + '" aria-pressed="' + (l.myVote > 0) + '">✓ Correct</button>' +
@@ -1345,16 +1361,17 @@
       seqPathHTML(key) +
       '<div class="cls-card"><div class="cls-h"><h3>Before this class</h3><span class="cls-src">Added by students</span></div>' +
       (before.map(function (l) { return linkRowHTML(l, 'before'); }).join('') || '<p class="cls-empty">Nobody has added a class yet. Know what you need first?</p>') +
-      '<button type="button" class="lk-add" data-ladd="before">+ Add a class needed before</button></div>' +
+      (REVIEWS_LOCKED ? '' : '<button type="button" class="lk-add" data-ladd="before">+ Add a class needed before</button>') + '</div>' +
       '<div class="cls-card"><div class="cls-h"><h3>After this class</h3><span class="cls-src">Added by students</span></div>' +
       (after.map(function (l) { return linkRowHTML(l, 'after'); }).join('') || '<p class="cls-empty">Nobody has added a next class yet.</p>') +
-      '<button type="button" class="lk-add" data-ladd="after">+ Add a class that comes after</button></div>' +
+      (REVIEWS_LOCKED ? '' : '<button type="button" class="lk-add" data-ladd="after">+ Add a class that comes after</button>') + '</div>' +
       '<p class="cls-tip cls-disclaimer">Added and checked by students, not official. Always confirm with an advisor or the course catalog.</p>' +
       togetherHTML(key) +
       '<div class="section-head"><h2>Reviews (' + revs.length + ')</h2></div>' +
+      (REVIEWS_LOCKED ? reviewsSoonHTML() : '') +
       '<div class="prof-list">' + (revs.map(function (r) { return profFullHTML(r, true); }).join('') ||
-        emptyHTML('No reviews yet', 'Be the first to review this class.', 'Write a review', 'review-class')) + '</div>' +
-      (revs.length ? '<div class="cls-write"><button class="btn btn-primary" type="button" data-empty-action="review-class">Write a review for this class</button></div>' : '') +
+        (REVIEWS_LOCKED ? emptyHTML('No reviews yet', 'Professor reviews are coming soon.') : emptyHTML('No reviews yet', 'Be the first to review this class.', 'Write a review', 'review-class'))) + '</div>' +
+      (revs.length && !REVIEWS_LOCKED ? '<div class="cls-write"><button class="btn btn-primary" type="button" data-empty-action="review-class">Write a review for this class</button></div>' : '') +
       guestFoot();
   }
   function openLinkModal(side) {
@@ -1594,7 +1611,7 @@
       fab.hidden = false;
       fabLabel.textContent = 'Write a story';
     } else if (name === 'professors' || name === 'class') {
-      fab.hidden = false;
+      fab.hidden = REVIEWS_LOCKED;
       fabLabel.textContent = 'Write a review';
     } else {
       fab.hidden = true;
@@ -1892,6 +1909,7 @@
   function openProfModal(opts) {
     opts = opts || {};
     const edit = opts.edit || null;
+    if (REVIEWS_LOCKED && !edit) { showToast('Professor reviews are coming soon.'); return; }
     editingReviewId = edit ? edit.id : null;
     fillProfNameList();
     document.getElementById('profModalHeading').textContent = edit ? 'Edit your review' : 'New professor review';
@@ -2769,7 +2787,7 @@
           <button class="text-action" type="button" data-myrv="edit" data-id="${escapeHtml(r.id)}">Edit</button>
           <button class="text-action danger" type="button" data-myrv="del" data-id="${escapeHtml(r.id)}">Delete</button></span></div>
         </div>`;
-      }).join('') : emptyHTML('No reviews yet', 'Reviews you write will show up here. Only you can see this list.', 'Write a review', 'review');
+      }).join('') : emptyHTML('No reviews yet', 'Reviews you write will show up here. Only you can see this list.', REVIEWS_LOCKED ? '' : 'Write a review', 'review');
       openMyModal('My reviews (' + mine.length + ')', html);
     } else if (key === 'saved') {
       const saved = stories.filter(function (s) { return account().savedStoryIds.indexOf(s.id) >= 0; });
