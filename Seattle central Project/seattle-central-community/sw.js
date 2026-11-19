@@ -7,7 +7,7 @@
 // (Supabase, fonts, CDN) are never touched, so data is always live.
 //
 // Bump CACHE_NAME whenever you want to force old caches out.
-const CACHE_NAME = 'scc-shell-v7';
+const CACHE_NAME = 'scc-shell-v8';
 const APP_SHELL = [
   './',
   './index.html',

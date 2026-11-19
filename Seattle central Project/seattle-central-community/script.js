@@ -1714,18 +1714,81 @@
     document.getElementById('alertDot').hidden = !unread;
   }
 
+  // The same "Author / Anonymous N" label people see on the post itself.
+  function commentLabel(p, cid) {
+    const map = {}; let n = 0, out = null;
+    (p.comments || []).some(function (c) {
+      let lab;
+      if (c.authorId === p.authorId) lab = 'Author';
+      else { if (!map[c.authorId]) map[c.authorId] = ++n; lab = 'Anonymous ' + map[c.authorId]; }
+      if (String(c.id) === String(cid)) { out = { label: lab, text: c.text }; return true; }
+      return false;
+    });
+    return out;
+  }
+  function alertItems(list) {
+    const items = [], likeAt = {};
+    list.forEach(function (n) {
+      const kind = n.kind || (n.reviewId ? 'review_comment' : /replied/i.test(n.text || '') ? 'reply' : /liked/i.test(n.text || '') ? 'like' : 'comment');
+      if (kind === 'like' && n.postId) {
+        // All likes on one post become one line: "3 people liked your post".
+        const k = String(n.postId);
+        if (likeAt[k] != null) { const it = items[likeAt[k]]; it.count++; it.unread = it.unread || !n.read; return; }
+        likeAt[k] = items.length;
+        items.push({ kind: kind, postId: n.postId, ts: n.ts, unread: !n.read, count: 1 });
+        return;
+      }
+      items.push({ kind: kind, postId: n.postId, reviewId: n.reviewId, commentId: n.commentId, ts: n.ts, unread: !n.read, text: n.text });
+    });
+    return items;
+  }
+  function alertHTML(it) {
+    const p = it.postId ? posts.find(function (x) { return String(x.id) === String(it.postId); }) : null;
+    let av, avCls = 'na-av', who, where = '', quote = '', board = '';
+    if (it.kind === 'like') {
+      av = '♥'; avCls += ' like';
+      who = '<b>' + (it.count > 1 ? it.count + ' people' : 'Someone') + '</b> liked your post';
+    } else if (it.kind === 'review_comment') {
+      const r = profReviews.find(function (x) { return String(x.id) === String(it.reviewId); });
+      av = '✎'; avCls += ' rev';
+      who = '<b>Someone</b> commented on your review';
+      if (r) { where = escapeHtml(r.prof) + (r.course ? ' · ' + escapeHtml(String(r.course).split(' · ')[0]) : ''); board = 'Professor review'; }
+    } else {
+      const c = p && it.commentId ? commentLabel(p, it.commentId) : null;
+      const label = c ? c.label : 'Someone';
+      av = label === 'Author' ? 'OP' : label === 'Someone' ? '💬' : label.split(' ')[1];
+      if (label === 'Author') avCls += ' op';
+      who = '<b>' + escapeHtml(label) + '</b> ' + (it.kind === 'reply' ? 'replied to your comment' : 'commented on your post');
+      if (c && c.text) {
+        const t = c.text.replace(/\s+/g, ' ').trim();
+        quote = '“' + escapeHtml(t.length > 110 ? t.slice(0, 110) + '…' : t) + '”';
+      }
+    }
+    if (p) { where = escapeHtml(p.title); board = escapeHtml(boardNames[p.board] || p.board); }
+    if (!where && it.kind !== 'review_comment') where = '<span class="na-gone">Post no longer available</span>';
+    return '<button type="button" class="na-item' + (it.unread ? ' unread' : '') + '" data-post-id="' + escapeHtml(it.postId || '') + '" data-review-id="' + escapeHtml(it.reviewId || '') + '" data-comment-id="' + escapeHtml(it.commentId || '') + '">' +
+      '<span class="' + avCls + '" aria-hidden="true">' + av + '</span>' +
+      '<span class="na-body"><span class="na-who">' + who + '</span>' +
+      (where ? '<span class="na-post">' + where + '</span>' : '') +
+      (quote ? '<span class="na-quote">' + quote + '</span>' : '') +
+      '<span class="na-time">' + escapeHtml(timeAgo(it.ts)) + (board ? ' · ' + board : '') + '</span></span>' +
+      (it.unread ? '<span class="na-dot" aria-label="Unread"></span>' : '') + '</button>';
+  }
   async function renderAlerts() {
-    await Store.markNotificationsRead();
-    await updateAlertDot();
     const list = await Store.notifications();
-    document.getElementById('alertsList').innerHTML = list.length
-      ? list.map(function (n) {
-        return `<button class="menu-item" type="button" data-post-id="${escapeHtml(n.postId || '')}" data-review-id="${escapeHtml(n.reviewId || '')}">
-          <div><div style="font-weight:600;font-size:13.5px;">${escapeHtml(n.text)}</div>
-          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:4px;">${escapeHtml(timeAgo(n.ts))}</div></div>
-          <span class="right">›</span></button>`;
-      }).join('')
-      : emptyHTML('No notifications yet', 'Comments on your posts and reviews will show up here.');
+    const items = alertItems(list);
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const today = items.filter(function (it) { return it.ts >= start.getTime(); });
+    const earlier = items.filter(function (it) { return it.ts < start.getTime(); });
+    const anyUnread = items.some(function (it) { return it.unread; });
+    const head = document.querySelector('#page-alerts .section-head');
+    if (head) head.innerHTML = '<h2>Notifications</h2>' + (anyUnread ? '<button type="button" class="na-markall" data-mark-all>Mark all read</button>' : '');
+    document.getElementById('alertsList').innerHTML = items.length
+      ? (today.length ? '<p class="na-grp">Today</p>' + today.map(alertHTML).join('') : '') +
+        (earlier.length ? '<p class="na-grp">Earlier</p>' + earlier.map(alertHTML).join('') : '')
+      : emptyHTML('No notifications yet', 'Comments, replies and likes on your posts will show up here.');
+    // Opening the page counts as seeing them: the bell dot clears, but this visit still shows what was new.
+    if (anyUnread) { await Store.markNotificationsRead(); await updateAlertDot(); }
   }
 
   async function renderSearch(q) {
@@ -1786,7 +1849,7 @@
           </div>
         </div>`;
       }
-      return `<div class="${cls}">
+      return `<div class="${cls}" data-cid="${escapeHtml(c.id || '')}">
         <div class="c-avatar">${escapeHtml(initials)}</div>
         <div class="c-body">
           <div class="c-name">${escapeHtml(label)}${canEdit ? ' (you)' : ''}</div>
@@ -3164,10 +3227,25 @@
     }
   });
 
+  document.getElementById('page-alerts').addEventListener('click', async function (e) {
+    if (!e.target.closest('[data-mark-all]')) return;
+    await Store.markNotificationsRead(); await updateAlertDot();
+    document.querySelectorAll('#alertsList .na-item.unread').forEach(function (x) { x.classList.remove('unread'); const d = x.querySelector('.na-dot'); if (d) d.remove(); });
+    const b = e.target.closest('[data-mark-all]'); if (b) b.remove();
+  });
   document.getElementById('alertsList').addEventListener('click', function (e) {
     const row = e.target.closest('[data-post-id]');
     if (!row) return;
-    if (row.dataset.postId) { openPost(row.dataset.postId); return; }
+    if (row.dataset.postId) {
+      if (!posts.some(function (x) { return String(x.id) === String(row.dataset.postId); })) { showToast('That post was deleted.'); return; }
+      openPost(row.dataset.postId);
+      const cid = row.dataset.commentId;
+      if (cid) {
+        const el = Array.prototype.find.call(document.querySelectorAll('#postDetailContent [data-cid]'), function (x) { return x.dataset.cid === cid; });
+        if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('c-flash'); setTimeout(function () { el.classList.remove('c-flash'); }, 2200); }
+      }
+      return;
+    }
     if (row.dataset.reviewId) {
       openReviewOnClass(profReviews.find(function (x) { return String(x.id) === String(row.dataset.reviewId); }));
     }

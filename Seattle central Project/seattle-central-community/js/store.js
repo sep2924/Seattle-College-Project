@@ -529,8 +529,16 @@
       if (!post) return { ok: false, error: 'Post not found.' };
       post.likedBy = post.likedBy || [];
       const i = post.likedBy.indexOf(user.userId);
-      if (i >= 0) { post.likedBy.splice(i, 1); post.likes = Math.max(0, (post.likes || 0) - 1); }
-      else { post.likedBy.push(user.userId); post.likes = (post.likes || 0) + 1; }
+      if (i >= 0) {
+        post.likedBy.splice(i, 1); post.likes = Math.max(0, (post.likes || 0) - 1);
+        const k = this.db.notifications.findIndex(function (n) { return n.kind === 'like' && n.postId === post.id && n.userId === post.authorId; });
+        if (k >= 0 && post.authorId !== user.userId) this.db.notifications.splice(k, 1);
+      } else {
+        post.likedBy.push(user.userId); post.likes = (post.likes || 0) + 1;
+        if (post.authorId && post.authorId !== user.userId) {
+          this.db.notifications.unshift({ id: uid('n'), userId: post.authorId, kind: 'like', text: 'Someone liked your post', ts: now(), read: false, postId: post.id });
+        }
+      }
       this._persist();
       return { ok: true };
     },
@@ -671,18 +679,15 @@
       if (parent && parent.parentId) parent = post.comments.find(function (c) { return c.id === parent.parentId; }) || null;
       const comment = { id: uid('c'), authorId: user.userId, name: 'Anonymous', text: text, ts: now(), parentId: parent ? parent.id : null };
       post.comments.push(comment);
-      if (parent && parent.authorId !== user.userId && parent.authorId !== post.authorId) {
-        this.db.notifications.unshift({ id: uid('n'), userId: parent.authorId, text: 'Someone replied to your comment on “' + post.title + '”', ts: now(), read: false, postId: post.id });
-      }
+      const parentAuthor = parent ? parent.authorId : null;
       if (post.authorId !== user.userId) {
-        this.db.notifications.unshift({
-          id: uid('n'),
-          userId: post.authorId,
-          text: 'Someone commented on “' + post.title + '”',
-          ts: now(),
-          read: false,
-          postId: post.id
-        });
+        const rp = parentAuthor === post.authorId;
+        this.db.notifications.unshift({ id: uid('n'), userId: post.authorId, kind: rp ? 'reply' : 'comment', commentId: comment.id,
+          text: rp ? 'Someone replied to your comment' : 'Someone commented on your post', ts: now(), read: false, postId: post.id });
+      }
+      if (parentAuthor && parentAuthor !== user.userId && parentAuthor !== post.authorId) {
+        this.db.notifications.unshift({ id: uid('n'), userId: parentAuthor, kind: 'reply', commentId: comment.id,
+          text: 'Someone replied to your comment', ts: now(), read: false, postId: post.id });
       }
       this._persist();
       return { ok: true };
@@ -720,6 +725,7 @@
       if (!c) return;
       if (c.authorId !== this.session.userId) return;
       post.comments.splice(idx, 1);
+      this.db.notifications = this.db.notifications.filter(function (n) { return n.commentId !== c.id; });
       // Replies to a deleted comment stay, as normal comments.
       post.comments.forEach(function (k) { if (k.parentId === c.id) k.parentId = null; });
       this._persist();
@@ -881,7 +887,7 @@
       this.db.reviewComments = this.db.reviewComments || [];
       this.db.reviewComments.push({ id: uid('rc'), reviewId: reviewId, authorId: user.userId, text: text, ts: now(), edited: false, helpful: false });
       if (rev.authorId !== user.userId) {
-        this.db.notifications.unshift({ id: uid('n'), userId: rev.authorId, text: 'Someone commented on your review', ts: now(), read: false, reviewId: reviewId });
+        this.db.notifications.unshift({ id: uid('n'), userId: rev.authorId, kind: 'review_comment', text: 'Someone commented on your review', ts: now(), read: false, reviewId: reviewId });
       }
       this._persist();
       return { ok: true };
@@ -1277,6 +1283,8 @@
             userId: row.user_id,
             postId: row.post_id,
             reviewId: row.review_id || null,
+            commentId: row.comment_id || null,
+            kind: row.kind || null,
             text: row.text,
             read: row.read,
             ts: new Date(row.created_at).getTime()
