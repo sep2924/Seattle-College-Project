@@ -1710,8 +1710,12 @@
 
   async function updateAlertDot() {
     const list = await Store.notifications();
-    const unread = list.some(function (n) { return !n.read; });
-    document.getElementById('alertDot').hidden = !unread;
+    // Count the way the list shows them: all likes on one post are one notification.
+    const n = alertItems(list).filter(function (it) { return it.unread; }).length;
+    const dot = document.getElementById('alertDot');
+    dot.hidden = !n;
+    dot.textContent = n > 9 ? '9+' : String(n || '');
+    document.getElementById('alertsBtn').setAttribute('aria-label', n ? 'Notifications, ' + n + ' unread' : 'Notifications');
   }
 
   // The same "Author / Anonymous N" label people see on the post itself.
@@ -1733,12 +1737,12 @@
       if (kind === 'like' && n.postId) {
         // All likes on one post become one line: "3 people liked your post".
         const k = String(n.postId);
-        if (likeAt[k] != null) { const it = items[likeAt[k]]; it.count++; it.unread = it.unread || !n.read; return; }
+        if (likeAt[k] != null) { const it = items[likeAt[k]]; it.count++; it.unread = it.unread || !n.read; it.ids.push(n.id); return; }
         likeAt[k] = items.length;
-        items.push({ kind: kind, postId: n.postId, ts: n.ts, unread: !n.read, count: 1 });
+        items.push({ kind: kind, postId: n.postId, ts: n.ts, unread: !n.read, count: 1, ids: [n.id] });
         return;
       }
-      items.push({ kind: kind, postId: n.postId, reviewId: n.reviewId, commentId: n.commentId, ts: n.ts, unread: !n.read, text: n.text });
+      items.push({ kind: kind, postId: n.postId, reviewId: n.reviewId, commentId: n.commentId, ts: n.ts, unread: !n.read, text: n.text, ids: [n.id] });
     });
     return items;
   }
@@ -1766,7 +1770,7 @@
     }
     if (p) { where = escapeHtml(p.title); board = escapeHtml(boardNames[p.board] || p.board); }
     if (!where && it.kind !== 'review_comment') where = '<span class="na-gone">Post no longer available</span>';
-    return '<button type="button" class="na-item' + (it.unread ? ' unread' : '') + '" data-post-id="' + escapeHtml(it.postId || '') + '" data-review-id="' + escapeHtml(it.reviewId || '') + '" data-comment-id="' + escapeHtml(it.commentId || '') + '">' +
+    return '<button type="button" class="na-item' + (it.unread ? ' unread' : '') + '" data-post-id="' + escapeHtml(it.postId || '') + '" data-review-id="' + escapeHtml(it.reviewId || '') + '" data-comment-id="' + escapeHtml(it.commentId || '') + '" data-nids="' + escapeHtml(it.ids.join(',')) + '">' +
       '<span class="' + avCls + '" aria-hidden="true">' + av + '</span>' +
       '<span class="na-body"><span class="na-who">' + who + '</span>' +
       (where ? '<span class="na-post">' + where + '</span>' : '') +
@@ -1787,8 +1791,6 @@
       ? (today.length ? '<p class="na-grp">Today</p>' + today.map(alertHTML).join('') : '') +
         (earlier.length ? '<p class="na-grp">Earlier</p>' + earlier.map(alertHTML).join('') : '')
       : emptyHTML('No notifications yet', 'Comments, replies and likes on your posts will show up here.');
-    // Opening the page counts as seeing them: the bell dot clears, but this visit still shows what was new.
-    if (anyUnread) { await Store.markNotificationsRead(); await updateAlertDot(); }
   }
 
   async function renderSearch(q) {
@@ -3236,6 +3238,12 @@
   document.getElementById('alertsList').addEventListener('click', function (e) {
     const row = e.target.closest('[data-post-id]');
     if (!row) return;
+    // Tapping a notification is what marks it read (it turns white next time you look).
+    if (row.classList.contains('unread')) {
+      row.classList.remove('unread'); const d = row.querySelector('.na-dot'); if (d) d.remove();
+      Store.markNotificationRead((row.dataset.nids || '').split(',')).then(updateAlertDot);
+      if (!document.querySelector('#alertsList .na-item.unread')) { const m = document.querySelector('[data-mark-all]'); if (m) m.remove(); }
+    }
     if (row.dataset.postId) {
       if (!posts.some(function (x) { return String(x.id) === String(row.dataset.postId); })) { showToast('That post was deleted.'); return; }
       openPost(row.dataset.postId);

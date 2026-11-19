@@ -1294,6 +1294,22 @@
       return this.db.notifications.filter(function (n) { return n.userId === uidCur; });
     },
 
+    // Mark only these notifications as read (used when one is tapped).
+    markNotificationRead: async function (ids) {
+      const uidCur = this.session && this.session.userId;
+      ids = (ids || []).filter(function (x) { return x != null && x !== ''; });
+      if (!uidCur || !ids.length) return;
+      if (this.mode === 'supabase') {
+        await this.supabase.from('notifications').update({ read: true }).eq('user_id', uidCur).in('id', ids);
+        return;
+      }
+      const want = ids.map(String);
+      this.db.notifications.forEach(function (n) {
+        if (n.userId === uidCur && want.indexOf(String(n.id)) >= 0) n.read = true;
+      });
+      this._persist();
+    },
+
     markNotificationsRead: async function () {
       const uidCur = this.session && this.session.userId;
       if (!uidCur) return;
