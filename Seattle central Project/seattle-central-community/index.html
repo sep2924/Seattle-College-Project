@@ -41,6 +41,7 @@
   <nav class="desktop-nav" aria-label="Main">
     <button class="dn-item active" type="button" data-page="home"><span class="ic" aria-hidden="true">⌂</span>Home</button>
     <button class="dn-item" type="button" data-page="board"><span class="ic" aria-hidden="true">▤</span>Boards</button>
+    <button class="dn-item" type="button" data-page="tools"><span class="ic" aria-hidden="true">▦</span>Tools</button>
     <button class="dn-item" type="button" data-page="stories"><span class="ic" aria-hidden="true">⇄</span>Transfer Stories</button>
     <button class="dn-item" type="button" data-page="professors"><span class="ic" aria-hidden="true">✎</span>Professor Reviews</button>
     <button class="dn-item" type="button" data-page="my"><span class="ic" aria-hidden="true">◔</span>My Page</button>
@@ -64,6 +65,7 @@
       </div>
       <div id="postDetailContent"></div>
     </section>
+    <section class="page" id="page-tools"></section>
     <section class="page" id="page-timer"></section>
     <section class="page" id="page-schedule"></section>
     <section class="page" id="page-search">
@@ -102,7 +104,7 @@
   <nav class="bottomnav" aria-label="Primary">
     <button class="navbtn active" type="button" data-page="home"><span class="ic" aria-hidden="true">⌂</span>Home</button>
     <button class="navbtn" type="button" data-page="board"><span class="ic" aria-hidden="true">▤</span>Boards</button>
-    <button class="navbtn" type="button" data-page="stories"><span class="ic" aria-hidden="true">⇄</span>Transfers</button>
+    <button class="navbtn" type="button" data-page="tools"><span class="ic" aria-hidden="true">▦</span>Tools</button>
     <button class="navbtn" type="button" data-page="professors"><span class="ic" aria-hidden="true">✎</span>Profs</button>
     <button class="navbtn" type="button" data-page="my"><span class="ic" aria-hidden="true">◔</span>My</button>
   </nav>
@@ -222,6 +224,8 @@
     <input type="text" id="modalTitleInput" maxlength="120" placeholder="What’s on your mind?">
     <label for="modalBody">Body</label>
     <textarea id="modalBody" maxlength="4000" placeholder="Share details…"></textarea>
+    <div class="starters" id="modalStarters" hidden></div>
+    <p class="anon-note">🔒 Posting as Anonymous. Your name is never shown.</p>
     <div class="modal-actions">
       <button class="btn btn-ghost" type="button" id="modalCancel">Cancel</button>
       <button class="btn btn-primary" type="button" id="modalPost">Post anonymously</button>

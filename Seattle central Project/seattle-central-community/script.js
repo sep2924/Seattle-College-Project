@@ -32,6 +32,16 @@
   let lastHash = '#home';
   let openPostId = null;
   let editingCommentIndex = null;
+  let replyTo = null; // { postId, id, label } while replying to a comment
+  // "New since your last visit": the time this browser last had the site open (kept for the whole tab session).
+  let prevVisit = 0;
+  try {
+    const sv = sessionStorage.getItem('scc-prev-visit');
+    if (sv !== null) prevVisit = Number(sv) || 0;
+    else { prevVisit = Number(localStorage.getItem('scc-last-visit')) || 0; sessionStorage.setItem('scc-prev-visit', String(prevVisit)); }
+    localStorage.setItem('scc-last-visit', String(Date.now()));
+  } catch (e) {}
+  window.addEventListener('pagehide', function () { try { localStorage.setItem('scc-last-visit', String(Date.now())); } catch (e) {} });
   let editingPostId = null;
   let reportTarget = null;
   let tSession = 0;
@@ -448,6 +458,50 @@
   document.getElementById('insDone').onclick = function () { document.getElementById('installOverlay').classList.remove('show'); };
   document.getElementById('installOverlay').addEventListener('click', function (e) { if (e.target === e.currentTarget) e.currentTarget.classList.remove('show'); });
 
+  // Questions nobody has answered yet (not yours), newest first.
+  function unansweredHTML() {
+    const user = Store.currentUser();
+    if (Store.guest || !user) return '';
+    const since = Date.now() - 30 * 86400000;
+    const ASK = { free: 1, transfer: 1, courseplan: 1, info: 1, events: 1 };
+    const list = posts.filter(function (p) {
+      return ASK[p.board] && !p.isSample && p.authorId !== user.userId && p.ts >= since && !(p.comments || []).length;
+    }).sort(function (a, b) { return b.ts - a.ts; }).slice(0, 2);
+    if (!list.length) return '';
+    return '<div class="section-head"><h2>Be the first to answer</h2></div><div class="ua-list">' + list.map(function (p) {
+      return '<article class="ua-card post" data-post-id="' + escapeHtml(p.id) + '">' +
+        '<h3 class="ua-title">' + escapeHtml(p.title) + '</h3>' +
+        '<div class="ua-meta">' + escapeHtml(boardNames[p.board] || p.board) + ' · 0 answers · ' + escapeHtml(timeAgo(p.ts)) + '</div>' +
+        '<button type="button" class="ua-btn" data-answer-post="' + escapeHtml(p.id) + '">Answer</button></article>';
+    }).join('') + '</div>';
+  }
+  function feedWithMarkersHTML(feed) {
+    const user = Store.currentUser();
+    const me = user && user.userId;
+    const fresh = function (it) { return prevVisit && it.ts > prevVisit; };
+    const anyNew = !Store.guest && feed.some(function (it) { return fresh(it) && it.data.authorId !== me; });
+    const anyOld = feed.some(function (it) { return !fresh(it); });
+    if (!anyNew) return feed.map(feedItemHTML).join('');
+    let h = '<div class="feed-mark new"><span>New since your last visit</span></div>', split = false;
+    feed.forEach(function (it) {
+      if (!split && !fresh(it) && anyOld) { h += '<div class="feed-mark"><span>Earlier</span></div>'; split = true; }
+      h += feedItemHTML(it);
+    });
+    return h;
+  }
+  function renderTools() {
+    const card = function (attr, ic, title, desc, tag) {
+      return '<button type="button" class="tool-card" ' + attr + '><span class="tool-ic" aria-hidden="true">' + ic + '</span>' +
+        '<span class="tool-txt"><b>' + title + '</b><span>' + desc + '</span></span><span class="tool-tag">' + tag + ' ›</span></button>';
+    };
+    document.getElementById('page-tools').innerHTML =
+      '<div class="section-head" style="padding-top:16px;"><h2>Tools</h2></div><div class="tool-list">' +
+      card('data-page="schedule"', '▦', 'Class schedule', 'Build your weekly class table and save it as a screenshot.', 'Private') +
+      card('data-page="timer"', '◷', 'Study timer', 'Track your study time and set a daily goal.', 'Private') +
+      card('data-tool-cw', '☰', 'Course work plans', 'Plan your quarters and see how other students plan theirs.', 'Shared') +
+      '</div>';
+  }
+
   function renderHome() {
     const el = document.getElementById('page-home');
     const feed = mixedFeed().slice(0, 12);
@@ -460,11 +514,13 @@
           return `<button class="board-cat" type="button" data-board="${k}"><span>${escapeHtml(boardNames[k])}</span></button>`;
         }).join('')}
         <button class="board-cat" type="button" data-board="coursework"><span>Course work</span></button>
+        <button class="board-cat" type="button" data-go="stories"><span>Transfer Stories</span></button>
       </div>
+      ${unansweredHTML()}
       ${hotHTML()}
       <div class="section-head"><h2>Campus feed</h2></div>
       <div id="homeFeed">
-        ${feed.length ? feed.map(feedItemHTML).join('') : emptyHTML('Nothing in the feed yet', 'Write the first post for your classmates.', 'Write a post', 'compose')}
+        ${feed.length ? feedWithMarkersHTML(feed) : emptyHTML('Nothing in the feed yet', 'Write the first post for your classmates.', 'Write a post', 'compose')}
       </div>${guestFoot()}`;
   }
 
@@ -483,6 +539,7 @@
         ${all.map(function (b) {
           return `<button class="pill ${activeBoard === b.key ? 'active' : ''}" type="button" data-board-filter="${b.key}">${escapeHtml(b.label)}</button>`;
         }).join('')}
+        <button class="pill pill-go" type="button" data-go="stories">Transfer Stories ›</button>
       </div>
       <div id="boardPosts">
         ${activeBoard === 'coursework' ? '' : (filtered.map(postHTML).join('') || emptyHTML('Nothing here yet', 'Be the first to write in this board.', 'Write a post', 'compose'))}
@@ -1547,7 +1604,7 @@
   }
 
   function navTo(name, extra) {
-    if (name === 'home' || name === 'board' || name === 'stories' || name === 'professors' || name === 'my' || name === 'timer' || name === 'schedule' || name === 'search' || name === 'alerts' || name === 'post' || name === 'class') {
+    if (name === 'home' || name === 'board' || name === 'stories' || name === 'professors' || name === 'my' || name === 'timer' || name === 'schedule' || name === 'search' || name === 'alerts' || name === 'post' || name === 'class' || name === 'tools') {
       const next = extra ? '#' + name + '/' + extra : '#' + name;
       if (location.hash !== next) location.hash = next;
       else goPage(name, extra);
@@ -1567,6 +1624,7 @@
     if (name === 'my') renderMyPage();
     if (name === 'timer') renderTimerPage();
     if (name === 'schedule') renderSchedulePage();
+    if (name === 'tools') renderTools();
     if (name === 'search') {
       const inp = document.getElementById('searchInput');
       renderSearch(inp.value);
@@ -1576,7 +1634,7 @@
 
   async function goPage(name, extra) {
     const seq = ++navSeq;
-    if (Store.guest && ['home', 'board', 'stories', 'professors', 'class'].indexOf(name) < 0) {
+    if (Store.guest && ['home', 'board', 'stories', 'professors', 'class', 'tools'].indexOf(name) < 0) {
       try { history.replaceState(null, '', '#home'); } catch (e) {}
       await goPage('home');
       showGuestPrompt();
@@ -1598,8 +1656,10 @@
     document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
     document.getElementById('page-' + name).classList.add('active');
     if (name === 'class') classKey = extra ? String(extra).toUpperCase().replace(/[^A-Z0-9]/g, '') || null : null;
-    const tab = name === 'class' ? 'professors' : (name === 'timer' || name === 'schedule' || name === 'search' || name === 'alerts' || name === 'post') ? (name === 'timer' || name === 'schedule' ? 'my' : 'home') : name;
-    document.querySelectorAll('.navbtn').forEach(function (b) { b.classList.toggle('active', b.dataset.page === tab); });
+    const tab = name === 'class' ? 'professors' : (name === 'timer' || name === 'schedule' || name === 'search' || name === 'alerts' || name === 'post') ? (name === 'timer' || name === 'schedule' ? 'tools' : 'home') : name;
+    // The phone menu has no Transfer Stories tab: it lives under Boards there.
+    const mtab = tab === 'stories' ? 'board' : tab;
+    document.querySelectorAll('.navbtn').forEach(function (b) { b.classList.toggle('active', b.dataset.page === mtab); });
     document.querySelectorAll('.dn-item').forEach(function (b) { b.classList.toggle('active', b.dataset.page === tab); });
 
     const fab = document.getElementById('fab');
@@ -1696,6 +1756,50 @@
       if (!anonMap[c.authorId]) anonMap[c.authorId] = ++anonCount;
       return 'Anonymous ' + anonMap[c.authorId];
     }
+    // Number people in the order they first commented, then group replies under the comment they answer.
+    const labels = comments.map(anonName);
+    const myLabel = !user ? 'Anonymous' : user.userId === p.authorId ? 'Author'
+      : anonMap[user.userId] ? 'Anonymous ' + anonMap[user.userId] : 'Anonymous ' + (anonCount + 1);
+    const byId = {};
+    comments.forEach(function (c) { if (c.id) byId[c.id] = c; });
+    const tops = [], kids = {};
+    comments.forEach(function (c, idx) {
+      const par = c.parentId && byId[c.parentId] && !byId[c.parentId].parentId ? c.parentId : null;
+      if (par) (kids[par] = kids[par] || []).push(idx); else tops.push(idx);
+    });
+    if (replyTo && (replyTo.postId !== p.id || !byId[replyTo.id])) replyTo = null;
+    function commentOne(idx, isReply, repliesHTML) {
+      const c = comments[idx];
+      const canEdit = user && c.authorId === user.userId;
+      const label = labels[idx];
+      const initials = label === 'Author' ? 'OP' : label.split(' ')[1];
+      const cls = 'comment' + (isReply ? ' reply' : '');
+      if (idx === editingCommentIndex) {
+        return `<div class="${cls}">
+          <div class="c-avatar">${escapeHtml(initials)}</div>
+          <div class="c-body">
+            <textarea class="c-edit-input" id="commentEditInput" rows="2" maxlength="2000">${escapeHtml(c.text)}</textarea>
+            <div class="comment-edit-actions">
+              <button class="text-action" type="button" data-save-comment="${idx}">Save</button>
+              <button class="text-action" type="button" data-cancel-comment>Cancel</button>
+            </div>${repliesHTML}
+          </div>
+        </div>`;
+      }
+      return `<div class="${cls}">
+        <div class="c-avatar">${escapeHtml(initials)}</div>
+        <div class="c-body">
+          <div class="c-name">${escapeHtml(label)}${canEdit ? ' (you)' : ''}</div>
+          <div class="c-text">${escapeHtml(c.text)}</div>
+          <div class="c-time">${escapeHtml(c.ts ? timeAgo(c.ts) : '')}${c.edited ? ' · edited' : ''}</div>
+          <div class="comment-actions">
+            ${c.id ? `<button class="text-action c-reply" type="button" data-reply-comment="${idx}" data-label="${escapeHtml(label)}">Reply</button>` : ''}
+            ${canEdit ? `<button class="text-action" type="button" data-edit-comment="${idx}">Edit</button>
+            <button class="text-action danger" type="button" data-delete-comment="${idx}">Delete</button>` : ''}
+          </div>${repliesHTML}
+        </div>
+      </div>`;
+    }
     document.getElementById('postDetailContent').innerHTML = `
       <div class="post-detail">
         <div class="post-meta"><span class="post-tag">${escapeHtml(boardNames[p.board] || p.board || 'Post')}</span><span>·</span><span>Seattle Central</span><span>·</span><span>${escapeHtml(timeAgo(p.ts))}${p.edited ? ' · edited' : ''}</span>${sampleBadge(p)}</div>
@@ -1711,40 +1815,22 @@
       <div class="comments-section">
         <h4>Comments (${comments.length})</h4>
         ${comments.length === 0 ? '<div class="empty" style="padding:18px 0;"><p>No comments yet. Start the conversation.</p></div>' : ''}
-        ${comments.map(function (c, idx) {
-          const canEdit = user && c.authorId === user.userId;
-          const label = anonName(c);
-          const initials = label === 'Author' ? 'OP' : label.split(' ')[1];
-          if (idx === editingCommentIndex) {
-            return `<div class="comment">
-              <div class="c-avatar">${escapeHtml(initials)}</div>
-              <div class="c-body" style="width:100%;">
-                <input type="text" class="c-edit-input" id="commentEditInput" value="${escapeHtml(c.text)}">
-                <div class="comment-edit-actions">
-                  <button class="text-action" type="button" data-save-comment="${idx}">Save</button>
-                  <button class="text-action" type="button" data-cancel-comment>Cancel</button>
-                </div>
-              </div>
-            </div>`;
-          }
-          return `<div class="comment">
-            <div class="c-avatar">${escapeHtml(initials)}</div>
-            <div class="c-body">
-              <div class="c-name">${escapeHtml(label)}${canEdit ? ' (you)' : ''}</div>
-              <div class="c-text">${escapeHtml(c.text)}</div>
-              <div class="c-time">${escapeHtml(c.ts ? timeAgo(c.ts) : '')}${c.edited ? ' · edited' : ''}</div>
-              ${canEdit ? `<div class="comment-actions">
-                <button class="text-action" type="button" data-edit-comment="${idx}">Edit</button>
-                <button class="text-action danger" type="button" data-delete-comment="${idx}">Delete</button>
-              </div>` : ''}
-            </div>
-          </div>`;
+        ${tops.map(function (i) {
+          const ks = kids[comments[i].id] || [];
+          return commentOne(i, false, ks.length ? '<div class="replies">' + ks.map(function (k) { return commentOne(k, true, ''); }).join('') + '</div>' : '');
         }).join('')}
       </div>
-      <div class="comment-input-row">
-        <label class="sr-only" for="commentInput">Add a comment</label>
-        <input type="text" id="commentInput" placeholder="Add a comment…">
-        <button type="button" id="commentSendBtn">Post</button>
+      <div class="comment-input-wrap">
+        <div class="ci-meta">
+          <span class="ci-as">🔒 Posting as ${escapeHtml(myLabel)}</span>
+          <span class="ci-reply" id="ciReply" ${replyTo ? '' : 'hidden'}>Replying to <b id="ciReplyName">${escapeHtml(replyTo ? replyTo.label : '')}</b>
+            <button type="button" data-cancel-reply aria-label="Cancel reply">✕</button></span>
+        </div>
+        <div class="comment-input-row">
+          <label class="sr-only" for="commentInput">Add a comment</label>
+          <textarea id="commentInput" rows="1" maxlength="2000" placeholder="Add a comment…"></textarea>
+          <button type="button" id="commentSendBtn">Post</button>
+        </div>
       </div>`;
 
     document.querySelectorAll('.page').forEach(function (pg) {
@@ -1765,27 +1851,60 @@
     sendBtn.onclick = function () {
       busy(sendBtn, async function () {
         const input = document.getElementById('commentInput');
-        const text = input.value.trim();
+        const text = keepIndent(input.value);
         if (!text) return;
-        const cr = await Store.addComment(p.id, text);
+        const cr = await Store.addComment(p.id, text, replyTo ? replyTo.id : null);
         if (cr && cr.ok === false) { alert('Could not post comment: ' + (cr.error || 'try again')); return; }
         editingCommentIndex = null;
+        replyTo = null;
         await refreshCache();
         openPost(id, true, true);
       });
     };
-    document.getElementById('commentInput').onkeydown = function (e) { if (e.key === 'Enter' && !e.isComposing) sendBtn.click(); };
+    const ci = document.getElementById('commentInput');
+    const grow = function () { ci.style.height = 'auto'; ci.style.height = Math.min(ci.scrollHeight, 140) + 'px'; };
+    ci.oninput = grow;
+    // On a computer, Enter posts and Shift+Enter makes a new line. On phones, Enter always makes a new line.
+    ci.onkeydown = function (e) {
+      if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+      let desk = false;
+      try { desk = window.matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (err) {}
+      if (desk) { e.preventDefault(); sendBtn.click(); }
+    };
+    const ce = document.getElementById('commentEditInput');
+    if (ce) { ce.style.height = Math.min(ce.scrollHeight + 2, 200) + 'px'; }
   }
 
   const BOARD_HINTS = {
-    events: { t: 'What class do you need help with, or what can you tutor?', b: 'Class, times that work for you, online or on campus…' },
-    confess: { t: 'What are you sharing? (e.g. MATH 151 study guide)', b: 'Describe your notes, study guide, or practice test. You can paste a link to the file.' }
+    free: { t: 'What’s on your mind?', b: 'Share details…', chips: ['Quick question:', 'Does anyone else…', 'Looking for…'] },
+    transfer: { t: 'Ask your transfer question in one line', b: 'Which school and major? When are you applying? What have you done so far?', chips: ['I’m applying to…', 'My major is…', 'My GPA is around…'] },
+    courseplan: { t: 'Ask your question in one line', b: 'Which classes? Which quarter? What’s your major?', chips: ['My major is…', 'I’m planning to take…', 'Is this too much?'] },
+    info: { t: 'What do you want to share? (deadline, event, tip)', b: 'What is it, when, and where? Add a link if you have one.', chips: ['When:', 'Where:', 'Link:'] },
+    dreams: { t: 'What’s your dream?', b: 'Where do you want to be in a few years, and what are you doing to get there?', chips: ['My dream is…', 'Right now I’m…', 'My next step is…'] },
+    events: { t: 'What class do you need help with, or what can you tutor?', b: 'Class, times that work for you, online or on campus…', chips: ['I need help with…', 'I can tutor…', 'Times that work:'] },
+    confess: { t: 'What are you sharing? (e.g. MATH 151 study guide)', b: 'Describe your notes, study guide, or practice test. You can paste a link to the file.', chips: ['Class:', 'What it covers:', 'Link:'] }
   };
   function syncBoardHint() {
     const h = BOARD_HINTS[document.getElementById('modalBoard').value];
     document.getElementById('modalTitleInput').placeholder = h ? h.t : 'What’s on your mind?';
     document.getElementById('modalBody').placeholder = h ? h.b : 'Share details…';
+    const box = document.getElementById('modalStarters');
+    const chips = (h && h.chips) || [];
+    box.hidden = !chips.length;
+    box.innerHTML = chips.length ? '<span class="st-lbl">Tap to add to your post</span>' + chips.map(function (c) {
+      return '<button type="button" class="st-chip" data-starter="' + escapeHtml(c) + '">' + escapeHtml(c) + '</button>';
+    }).join('') : '';
   }
+  document.getElementById('modalStarters').addEventListener('click', function (e) {
+    const chip = e.target.closest('[data-starter]');
+    if (!chip) return;
+    const body = document.getElementById('modalBody');
+    const add = chip.dataset.starter.replace(/…$/, '') + ' ';
+    const cur = body.value;
+    body.value = cur + (cur && !/\n$/.test(cur) ? '\n' : '') + add;
+    body.focus();
+    try { body.setSelectionRange(body.value.length, body.value.length); } catch (err) {}
+  });
   document.getElementById('modalBoard').addEventListener('change', syncBoardHint);
   function openModal(boardPreset) {
     editingPostId = null;
@@ -2518,7 +2637,17 @@
     if (e.target.closest('[data-rv-toggle],[data-rv-send],[data-rc-edit],[data-rc-del],[data-rc-save],[data-rc-cancel],[data-rc-help],[data-rv-edit],[data-rv-del],[data-lvote],[data-ladd],[data-ldel],[data-guest-auth]')) return;
     const classOpen = e.target.closest('[data-class-open]');
     if (classOpen) { navTo('class', classOpen.dataset.classOpen); return; }
-    const cat = e.target.closest('.board-cat');
+    const ans = e.target.closest('[data-answer-post]');
+    if (ans) {
+      editingCommentIndex = null; openPost(ans.dataset.answerPost);
+      const ci = document.getElementById('commentInput'); if (ci) ci.focus();
+      return;
+    }
+    const toolCw = e.target.closest('[data-tool-cw]');
+    if (toolCw) { activeBoard = 'coursework'; navTo('board', 'coursework'); return; }
+    const toolPg = e.target.closest('.tool-card[data-page]');
+    if (toolPg) { navTo(toolPg.dataset.page); return; }
+    const cat = e.target.closest('.board-cat[data-board]');
     if (cat) { activeBoard = cat.dataset.board; navTo('board', cat.dataset.board); return; }
     const go = e.target.closest('[data-go]');
     if (go) { navTo(go.dataset.go); return; }
@@ -2823,6 +2952,21 @@
       navTo(lastPage || 'board');
       return;
     }
+    const replyBtn = e.target.closest('[data-reply-comment]');
+    if (replyBtn) {
+      const rp = posts.find(function (x) { return String(x.id) === String(openPostId); });
+      const rcm = rp && rp.comments ? rp.comments[Number(replyBtn.dataset.replyComment)] : null;
+      // Replies are one level deep: answering a reply joins the thread of the comment above it.
+      const rc = rcm ? (rcm.parentId || rcm.id) : null;
+      if (!rc) return;
+      // Update the reply line in place so anything already typed stays.
+      replyTo = { postId: openPostId, id: rc, label: replyBtn.dataset.label };
+      document.getElementById('ciReplyName').textContent = replyTo.label;
+      document.getElementById('ciReply').hidden = false;
+      document.getElementById('commentInput').focus();
+      return;
+    }
+    if (e.target.closest('[data-cancel-reply]')) { replyTo = null; document.getElementById('ciReply').hidden = true; return; }
     const editBtn = e.target.closest('[data-edit-comment]');
     if (editBtn) { editingCommentIndex = Number(editBtn.dataset.editComment); openPost(openPostId, true, true); return; }
     const delBtn = e.target.closest('[data-delete-comment]');
@@ -2839,7 +2983,7 @@
       const input = document.getElementById('commentEditInput');
       const si = Number(saveBtn.dataset.saveComment);
       if (!input.value.trim()) { input.focus(); return; }
-      await Store.updateComment(openPostId, si, input.value.trim(), commentIdAt(si));
+      await Store.updateComment(openPostId, si, keepIndent(input.value), commentIdAt(si));
       editingCommentIndex = null;
       await refreshCache();
       openPost(openPostId, true, true);

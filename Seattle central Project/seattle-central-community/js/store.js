@@ -650,19 +650,30 @@
       return (data || []).map(function (c) { return c.id; });
     },
 
-    addComment: async function (postId, text) {
+    // parentId (optional) makes this a reply. Replies are one level deep: a reply to a reply joins the same thread.
+    addComment: async function (postId, text, parentId) {
       const user = this.session;
       if (this.mode === 'supabase') {
-        const { error } = await this.supabase.from('comments').insert({
-          post_id: postId, author_id: user.userId, nickname: 'Anonymous', body: text
-        });
+        const row = { post_id: postId, author_id: user.userId, nickname: 'Anonymous', body: text };
+        if (parentId) row.parent_id = parentId;
+        let { error } = await this.supabase.from('comments').insert(row);
+        if (error && parentId && /parent_id/.test(error.message || '')) {
+          // The replies SQL has not been run yet: post it as a normal comment instead of failing.
+          delete row.parent_id;
+          error = (await this.supabase.from('comments').insert(row)).error;
+        }
         return error ? { ok: false, error: error.message } : { ok: true };
       }
       const post = this.db.posts.find(function (p) { return p.id === postId; });
       if (!post) return { ok: false };
-      const comment = { id: uid('c'), authorId: user.userId, name: 'Anonymous', text: text, ts: now() };
       post.comments = post.comments || [];
+      let parent = parentId ? post.comments.find(function (c) { return c.id === parentId; }) : null;
+      if (parent && parent.parentId) parent = post.comments.find(function (c) { return c.id === parent.parentId; }) || null;
+      const comment = { id: uid('c'), authorId: user.userId, name: 'Anonymous', text: text, ts: now(), parentId: parent ? parent.id : null };
       post.comments.push(comment);
+      if (parent && parent.authorId !== user.userId && parent.authorId !== post.authorId) {
+        this.db.notifications.unshift({ id: uid('n'), userId: parent.authorId, text: 'Someone replied to your comment on “' + post.title + '”', ts: now(), read: false, postId: post.id });
+      }
       if (post.authorId !== user.userId) {
         this.db.notifications.unshift({
           id: uid('n'),
@@ -709,6 +720,8 @@
       if (!c) return;
       if (c.authorId !== this.session.userId) return;
       post.comments.splice(idx, 1);
+      // Replies to a deleted comment stay, as normal comments.
+      post.comments.forEach(function (k) { if (k.parentId === c.id) k.parentId = null; });
       this._persist();
     },
 
@@ -1324,7 +1337,7 @@
       comments: (row.comments || []).slice().sort(function (a, b) {
         return new Date(a.created_at) - new Date(b.created_at) || (a.id < b.id ? -1 : 1);
       }).map(function (c) {
-        return { id: c.id, authorId: c.author_id, name: c.nickname || 'Student', text: c.body, edited: c.edited, ts: new Date(c.created_at).getTime() };
+        return { id: c.id, authorId: c.author_id, name: c.nickname || 'Student', text: c.body, edited: c.edited, ts: new Date(c.created_at).getTime(), parentId: c.parent_id || null };
       })
     });
   }
