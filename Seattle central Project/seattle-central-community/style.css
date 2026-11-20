@@ -1295,3 +1295,18 @@
   /* Bell: number of unread */
   .icon-btn #alertDot{ width:auto; height:16px; min-width:10px; padding:0 3px; border-radius:8px; background:#D83A4F; color:#fff; font-size:10px; font-weight:700; line-height:16px; text-align:center; top:-4px; right:-5px; border:2px solid var(--surface); box-sizing:content-box; font-family:var(--font-body); }
   .icon-btn #alertDot[hidden]{ display:none; }
+
+  /* ---- Class paths (Tools) ---- */
+  .pa-intro{ margin:0 18px 12px; font-size:14px; line-height:1.5; color:var(--ink-soft); }
+  .pa-search{ padding:0 18px 12px; }
+  .pa-search input{ width:100%; box-sizing:border-box; height:44px; border:1px solid var(--line); border-radius:12px; padding:0 14px; font:inherit; font-size:15px; background:var(--surface); color:var(--ink); }
+  .pa-search input:focus{ outline:none; border-color:var(--mint); }
+  .pa-list{ display:flex; flex-direction:column; gap:8px; padding:0 18px 24px; }
+  .pa-lbl{ margin:4px 0 2px; font-size:12px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; color:var(--ink-soft); }
+  .pa-row{ display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:12px 14px; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); color:var(--ink); font:inherit; cursor:pointer; min-height:48px; }
+  .pa-row:hover{ border-color:var(--mint); }
+  .pa-row b{ flex:none; font-size:14.5px; }
+  .pa-name{ flex:1; min-width:0; font-size:13.5px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pa-n{ flex:none; font-size:12px; font-weight:600; color:var(--mint); }
+  .pa-new{ border-style:dashed; }
+  .pa-empty{ margin:4px 0; font-size:14px; line-height:1.5; color:var(--ink-soft); }

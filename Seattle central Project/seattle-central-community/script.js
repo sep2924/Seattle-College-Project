@@ -14,6 +14,8 @@
   const boardNames = Store.boardNames;
   // Professor reviews are read-only for now. Set to false to open writing, comments and class requirements again.
   const REVIEWS_LOCKED = true;
+  // Class paths (what to take before/after a class) work on their own, whatever REVIEWS_LOCKED is.
+  const CLASS_PATHS_LOCKED = false;
   const REVIEWS_SOON_MSG = 'New reviews, comments and class requirements are paused while we improve professor reviews. You can still read everything here.';
   if (REVIEWS_LOCKED) {
     document.querySelectorAll('.dn-item[data-page="professors"], .navbtn[data-page="professors"]').forEach(function (btn) {
@@ -489,6 +491,60 @@
     });
     return h;
   }
+  // ---- Class paths: find any class and open its page (before / after / taken together) ----
+  let pathsQuery = '';
+  function pathsClassList() {
+    const idx = courseIndex();
+    const score = {};
+    (courseLinks || []).forEach(function (l) { score[l.fromKey] = (score[l.fromKey] || 0) + 2; score[l.toKey] = (score[l.toKey] || 0) + 2; });
+    return Object.keys(idx).filter(function (k) { return /\d/.test(k) && k !== 'COURSE'; }).map(function (k) {
+      const e = idx[k];
+      return { key: k, code: normCode(e.code || k), name: e.name || '', score: (score[k] || 0) + Object.keys(e.codes || {}).reduce(function (t, c) { return t + e.codes[c]; }, 0) };
+    });
+  }
+  function pathsLinkCount(key) {
+    return (courseLinks || []).filter(function (l) { return l.fromKey === key || l.toKey === key; }).length;
+  }
+  function pathRowHTML(c) {
+    const n = pathsLinkCount(c.key);
+    return '<button type="button" class="pa-row" data-class-open="' + escapeHtml(c.key) + '"><b>' + escapeHtml(c.code) + '</b>' +
+      (c.name ? '<span class="pa-name">' + escapeHtml(c.name) + '</span>' : '<span class="pa-name"></span>') +
+      '<span class="pa-n">' + (n ? n + (n === 1 ? ' link' : ' links') : 'No links yet') + ' ›</span></button>';
+  }
+  function renderPathsResults() {
+    const out = document.getElementById('paResults');
+    if (!out) return;
+    const q = pathsQuery.trim();
+    const all = pathsClassList();
+    if (!q) {
+      const top = all.sort(function (a, b) { return b.score - a.score || a.code.localeCompare(b.code); }).slice(0, 12);
+      out.innerHTML = top.length
+        ? '<p class="pa-lbl">Popular classes</p>' + top.map(pathRowHTML).join('')
+        : '<p class="pa-empty">No classes yet. Search any class code, like MATH 151, to open its page and add what comes before and after.</p>';
+      return;
+    }
+    const qk = codeKey(q), ql = q.toLowerCase();
+    const hits = all.filter(function (c) { return (qk && c.key.indexOf(qk) === 0) || c.name.toLowerCase().indexOf(ql) >= 0; })
+      .sort(function (a, b) { return a.code.localeCompare(b.code); }).slice(0, 40);
+    let h = hits.map(pathRowHTML).join('');
+    // A class nobody has mentioned yet can still be opened, so students can start its path.
+    const looksLikeCode = /^[A-Za-z&]{2,6}\s*\d{2,3}[A-Za-z]?$/.test(q.replace(/&/g, '&'));
+    if (looksLikeCode && qk && !hits.some(function (c) { return c.key === qk; })) {
+      h += '<button type="button" class="pa-row pa-new" data-class-open="' + escapeHtml(qk) + '"><b>' + escapeHtml(normCode(q)) + '</b><span class="pa-name">Open this class and add its path</span><span class="pa-n">›</span></button>';
+    }
+    out.innerHTML = h || '<p class="pa-empty">No matching classes. Try a class code like MATH 151.</p>';
+  }
+  function renderPaths() {
+    document.getElementById('page-paths').innerHTML =
+      '<div class="section-head" style="padding-top:16px;"><h2>Class paths</h2></div>' +
+      '<p class="pa-intro">What should you take before and after a class? Students add these and vote to confirm them.</p>' +
+      '<div class="pa-search"><label class="sr-only" for="paSearch">Search a class</label>' +
+      '<input id="paSearch" type="search" autocomplete="off" placeholder="Search a class, like MATH 151" value="' + escapeHtml(pathsQuery) + '"></div>' +
+      '<div id="paResults" class="pa-list"></div>';
+    renderPathsResults();
+    document.getElementById('paSearch').addEventListener('input', function (e) { pathsQuery = e.target.value; renderPathsResults(); });
+  }
+
   function renderTools() {
     const card = function (attr, ic, title, desc, tag) {
       return '<button type="button" class="tool-card" ' + attr + '><span class="tool-ic" aria-hidden="true">' + ic + '</span>' +
@@ -499,12 +555,13 @@
       card('data-page="schedule"', '▦', 'Class schedule', 'Build your weekly class table and save it as a screenshot.', 'Private') +
       card('data-page="timer"', '◷', 'Study timer', 'Track your study time and set a daily goal.', 'Private') +
       card('data-tool-cw', '☰', 'Course work plans', 'Plan your quarters and see how other students plan theirs.', 'Shared') +
+      card('data-page="paths"', '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19.5" cy="12" r="2.2"/><path d="M6.7 12h3.1M14.2 12h3.1"/></svg>', 'Class paths', 'See what to take before and after a class, added and checked by students.', 'Shared') +
       '</div>';
   }
 
   function renderHome() {
     const el = document.getElementById('page-home');
-    const feed = mixedFeed().slice(0, 12);
+    const feed = mixedFeed().slice(0, 20);
     el.innerHTML = `
       ${announcementHTML()}
       ${installBannerHTML()}
@@ -1346,7 +1403,7 @@
     let count = l.up + ' said correct' + (l.down ? ' · ' + l.down + ' said not right' : '');
     if (st === 'sug' && l.up < CONFIRM_VOTES) count += ' · needs ' + (CONFIRM_VOTES - l.up) + ' more';
     let acts = '';
-    if (REVIEWS_LOCKED) {
+    if (CLASS_PATHS_LOCKED) {
       acts = l.mine ? '<span class="lk-mine">Your suggestion</span>' : '';
     } else if (l.mine) {
       acts = '<span class="lk-mine">Your suggestion</span><button class="text-action danger" type="button" data-ldel="' + escapeHtml(l.id) + '">Delete</button>';
@@ -1418,10 +1475,10 @@
       seqPathHTML(key) +
       '<div class="cls-card"><div class="cls-h"><h3>Before this class</h3><span class="cls-src">Added by students</span></div>' +
       (before.map(function (l) { return linkRowHTML(l, 'before'); }).join('') || '<p class="cls-empty">Nobody has added a class yet. Know what you need first?</p>') +
-      (REVIEWS_LOCKED ? '' : '<button type="button" class="lk-add" data-ladd="before">+ Add a class needed before</button>') + '</div>' +
+      (CLASS_PATHS_LOCKED ? '' : '<button type="button" class="lk-add" data-ladd="before">+ Add a class needed before</button>') + '</div>' +
       '<div class="cls-card"><div class="cls-h"><h3>After this class</h3><span class="cls-src">Added by students</span></div>' +
       (after.map(function (l) { return linkRowHTML(l, 'after'); }).join('') || '<p class="cls-empty">Nobody has added a next class yet.</p>') +
-      (REVIEWS_LOCKED ? '' : '<button type="button" class="lk-add" data-ladd="after">+ Add a class that comes after</button>') + '</div>' +
+      (CLASS_PATHS_LOCKED ? '' : '<button type="button" class="lk-add" data-ladd="after">+ Add a class that comes after</button>') + '</div>' +
       '<p class="cls-tip cls-disclaimer">Added and checked by students, not official. Always confirm with an advisor or the course catalog.</p>' +
       togetherHTML(key) +
       '<div class="section-head"><h2>Reviews (' + revs.length + ')</h2></div>' +
@@ -1604,7 +1661,7 @@
   }
 
   function navTo(name, extra) {
-    if (name === 'home' || name === 'board' || name === 'stories' || name === 'professors' || name === 'my' || name === 'timer' || name === 'schedule' || name === 'search' || name === 'alerts' || name === 'post' || name === 'class' || name === 'tools') {
+    if (name === 'home' || name === 'board' || name === 'stories' || name === 'professors' || name === 'my' || name === 'timer' || name === 'schedule' || name === 'search' || name === 'alerts' || name === 'post' || name === 'class' || name === 'tools' || name === 'paths') {
       const next = extra ? '#' + name + '/' + extra : '#' + name;
       if (location.hash !== next) location.hash = next;
       else goPage(name, extra);
@@ -1625,6 +1682,7 @@
     if (name === 'timer') renderTimerPage();
     if (name === 'schedule') renderSchedulePage();
     if (name === 'tools') renderTools();
+    if (name === 'paths') renderPaths();
     if (name === 'search') {
       const inp = document.getElementById('searchInput');
       renderSearch(inp.value);
@@ -1634,7 +1692,7 @@
 
   async function goPage(name, extra) {
     const seq = ++navSeq;
-    if (Store.guest && ['home', 'board', 'stories', 'professors', 'class', 'tools'].indexOf(name) < 0) {
+    if (Store.guest && ['home', 'board', 'stories', 'professors', 'class', 'tools', 'paths'].indexOf(name) < 0) {
       try { history.replaceState(null, '', '#home'); } catch (e) {}
       await goPage('home');
       showGuestPrompt();
@@ -1656,7 +1714,7 @@
     document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
     document.getElementById('page-' + name).classList.add('active');
     if (name === 'class') classKey = extra ? String(extra).toUpperCase().replace(/[^A-Z0-9]/g, '') || null : null;
-    const tab = name === 'class' ? 'professors' : (name === 'timer' || name === 'schedule' || name === 'search' || name === 'alerts' || name === 'post') ? (name === 'timer' || name === 'schedule' ? 'tools' : 'home') : name;
+    const tab = name === 'class' || name === 'paths' ? 'tools' : (name === 'timer' || name === 'schedule' || name === 'search' || name === 'alerts' || name === 'post') ? (name === 'timer' || name === 'schedule' ? 'tools' : 'home') : name;
     // The phone menu has no Transfer Stories tab: it lives under Boards there.
     const mtab = tab === 'stories' ? 'board' : tab;
     document.querySelectorAll('.navbtn').forEach(function (b) { b.classList.toggle('active', b.dataset.page === mtab); });
