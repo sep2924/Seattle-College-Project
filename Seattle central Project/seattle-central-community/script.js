@@ -477,17 +477,18 @@
         '<button type="button" class="ua-btn" data-answer-post="' + escapeHtml(p.id) + '">Answer</button></article>';
     }).join('') + '</div>';
   }
-  function feedWithMarkersHTML(feed) {
+  function feedWithMarkersHTML(feed, rowFn) {
+    rowFn = rowFn || feedItemHTML;
     const user = Store.currentUser();
     const me = user && user.userId;
     const fresh = function (it) { return prevVisit && it.ts > prevVisit; };
     const anyNew = !Store.guest && feed.some(function (it) { return fresh(it) && it.data.authorId !== me; });
     const anyOld = feed.some(function (it) { return !fresh(it); });
-    if (!anyNew) return feed.map(feedItemHTML).join('');
+    if (!anyNew) return feed.map(rowFn).join('');
     let h = '<div class="feed-mark new"><span>New since your last visit</span></div>', split = false;
     feed.forEach(function (it) {
       if (!split && !fresh(it) && anyOld) { h += '<div class="feed-mark"><span>Earlier</span></div>'; split = true; }
-      h += feedItemHTML(it);
+      h += rowFn(it);
     });
     return h;
   }
@@ -559,27 +560,117 @@
       '</div>';
   }
 
+  // ---- Home: welcome box with an ask box, board chips, hot posts, slim tools row, feed ----
+  const HERO_KEY = 'scc-hero-hidden';
+  const ASK_KEY = 'scc-pending-ask';
+  let homeBoard = 'all';
+  function heroHTML() {
+    try { if (localStorage.getItem(HERO_KEY) === '1') return ''; } catch (e) {}
+    return '<section class="hero-ask" aria-labelledby="heroTitle">' +
+      '<button type="button" class="hero-x" data-hero-x aria-label="Hide this box">✕</button>' +
+      '<h2 id="heroTitle">Ask anything about Seattle Central.</h2>' +
+      '<p>Anonymous, free, and run by students. Your name is never shown.</p>' +
+      '<form class="hero-form" id="heroAskForm" autocomplete="off">' +
+      '<label class="sr-only" for="heroAskInput">Your question</label>' +
+      '<input id="heroAskInput" type="text" maxlength="400" placeholder="What do you want to ask?">' +
+      '<button type="submit" class="hero-btn">Ask</button></form></section>';
+  }
+  function homeChipsHTML() {
+    const chip = function (key, label, on) {
+      return '<button type="button" class="hchip' + (on ? ' on' : '') + '" data-home-board="' + key + '">' + escapeHtml(label) + '</button>';
+    };
+    const main = ['free', 'transfer', 'courseplan', 'info', 'events'].filter(function (k) { return boardNames[k]; });
+    // A board picked from "More" stays visible as a chip while it is selected.
+    if (homeBoard !== 'all' && main.indexOf(homeBoard) < 0 && boardNames[homeBoard]) main.push(homeBoard);
+    return '<div class="hchips" role="group" aria-label="Boards">' + chip('all', 'All', homeBoard === 'all') +
+      main.map(function (k) { return chip(k, SHORT_BOARD[k] || boardNames[k], homeBoard === k); }).join('') +
+      '<button type="button" class="hchip more" data-go="board">More ›</button></div>';
+  }
+  function homeToolsHTML() {
+    return '<div class="htools"><span class="htools-l">Plan your classes</span>' +
+      '<button type="button" class="htool" data-home-tool="schedule"><span aria-hidden="true">▦</span>Schedule</button>' +
+      '<button type="button" class="htool" data-home-tool="paths"><span aria-hidden="true">⋯</span>Class paths</button>' +
+      '<button type="button" class="htool" data-home-tool="timer"><span aria-hidden="true">◷</span>Timer</button>' +
+      '<button type="button" class="htool" data-board="coursework"><span aria-hidden="true">☰</span>Course work</button></div>';
+  }
+  const SHORT_BOARD = { courseplan: 'Course Plan' };
+  function homeFeedHTML() {
+    if (homeBoard === 'all') {
+      const feed = mixedFeed().slice(0, 20);
+      return feed.length ? feedWithMarkersHTML(feed) : emptyHTML('Nothing in the feed yet', 'Write the first post for your classmates.', 'Write a post', 'compose');
+    }
+    const list = posts.filter(function (p) { return p.board === homeBoard; }).sort(function (a, b) { return b.ts - a.ts; }).slice(0, 20);
+    return list.length ? list.map(postHTML).join('')
+      : emptyHTML('Nothing here yet', 'Be the first to write in ' + (boardNames[homeBoard] || 'this board') + '.', 'Write a post', 'compose');
+  }
+  // Start a post from the welcome box: the question becomes the title, and the person picks a board.
+  function openAskComposer(q) {
+    q = String(q || '').trim().replace(/\s+/g, ' ');
+    openModal();
+    const sel = document.getElementById('modalBoard');
+    if (q) {
+      sel.value = '';
+      let title = q, rest = '';
+      if (q.length > 120) {
+        const cut = q.lastIndexOf(' ', 117);
+        title = q.slice(0, cut > 60 ? cut : 117) + '…';
+        rest = '…' + q.slice(cut > 60 ? cut + 1 : 117);
+      }
+      document.getElementById('modalTitleInput').value = title;
+      document.getElementById('modalBody').value = rest;
+      syncBoardHint();
+      sel.focus();
+    }
+  }
+
   function renderHome() {
     const el = document.getElementById('page-home');
-    const feed = mixedFeed().slice(0, 20);
     el.innerHTML = `
       ${announcementHTML()}
       ${installBannerHTML()}
-      <div class="section-head"><h2>Jump into a board</h2><a href="#board">See all</a></div>
-      <div class="board-grid">
-        ${Object.keys(boardNames).map(function (k) {
-          return `<button class="board-cat" type="button" data-board="${k}"><span>${escapeHtml(boardNames[k])}</span></button>`;
-        }).join('')}
-        <button class="board-cat" type="button" data-board="coursework"><span>Course work</span></button>
-        <button class="board-cat" type="button" data-go="stories"><span>Transfer Stories</span></button>
-      </div>
-      ${unansweredHTML()}
-      ${hotHTML()}
-      <div class="section-head"><h2>Campus feed</h2></div>
-      <div id="homeFeed">
-        ${feed.length ? feedWithMarkersHTML(feed) : emptyHTML('Nothing in the feed yet', 'Write the first post for your classmates.', 'Write a post', 'compose')}
-      </div>${guestFoot()}`;
+      ${heroHTML()}
+      ${homeChipsHTML()}
+      ${homeBoard === 'all' ? hotHTML() : ''}
+      ${homeToolsHTML()}
+      <div class="section-head"><h2>${homeBoard === 'all' ? 'Campus feed' : escapeHtml(boardNames[homeBoard] || 'Campus feed')}</h2>${homeBoard === 'all' ? '' : '<a href="#board" data-board="' + homeBoard + '">Open board</a>'}</div>
+      <div id="homeFeed">${homeFeedHTML()}</div>${guestFoot()}`;
+    // A question typed before signing up opens once they're logged in.
+    let pending = '';
+    try { pending = sessionStorage.getItem(ASK_KEY) || ''; } catch (e) {}
+    if (pending && !Store.guest) {
+      try { sessionStorage.removeItem(ASK_KEY); } catch (e) {}
+      setTimeout(function () { openAskComposer(pending); }, 0);
+    }
   }
+  document.getElementById('page-home').addEventListener('submit', function (e) {
+    if (e.target.id !== 'heroAskForm') return;
+    e.preventDefault();
+    const q = document.getElementById('heroAskInput').value;
+    if (Store.guest) {
+      try { if (q.trim()) sessionStorage.setItem(ASK_KEY, q.trim()); } catch (err) {}
+      showGuestPrompt();
+      return;
+    }
+    openAskComposer(q);
+    document.getElementById('heroAskInput').value = '';
+  });
+  document.getElementById('page-home').addEventListener('click', function (e) {
+    if (e.target.closest('[data-hero-x]')) {
+      try { localStorage.setItem(HERO_KEY, '1'); } catch (err) {}
+      const h = document.querySelector('.hero-ask'); if (h) h.remove();
+      return;
+    }
+    const hb = e.target.closest('[data-home-board]');
+    if (hb) {
+      homeBoard = hb.dataset.homeBoard;
+      renderHome();
+      const strip = document.querySelector('#page-home .hchips .hchip.on');
+      if (strip && strip.scrollIntoView) strip.scrollIntoView({ block: 'nearest', inline: 'center' });
+      return;
+    }
+    const ht = e.target.closest('[data-home-tool]');
+    if (ht) { navTo(ht.dataset.homeTool); return; }
+  });
 
   function renderBoard() {
     const el = document.getElementById('page-board');
@@ -1758,12 +1849,14 @@
     await updateAlertDot();
   }
 
+  // Computer sidebar: a short "How it works" for newcomers.
   function renderAside() {
     const aside = document.getElementById('asideStories');
     if (!aside) return;
-    aside.innerHTML = stories.slice(0, 4).map(function (s) {
-      return `<div class="aside-story"><div class="route">${escapeHtml(s.from)} → ${escapeHtml(s.to)}</div><div class="major">${escapeHtml(s.major)} · GPA ${escapeHtml(s.gpa)}</div></div>`;
-    }).join('') || '<p class="aside-copy">No stories yet.</p>';
+    const step = function (n, b, t) { return '<div class="how-step"><span class="how-n">' + n + '</span><p><b>' + b + '</b> ' + t + '</p></div>'; };
+    aside.innerHTML = step(1, 'You’re anonymous.', 'Posts show “Anonymous”, never your name.') +
+      step(2, 'Ask or answer', 'about classes, transfers, and campus life.') +
+      step(3, 'Plan ahead', 'with schedules and class paths.');
   }
 
   async function updateAlertDot() {
@@ -2626,7 +2719,7 @@
   document.getElementById('guestBarLogin').onclick = function () { openAuth('login'); };
   document.getElementById('guestBarSignup').onclick = function () { openAuth('signup'); };
 
-  var GUEST_LOCKED = '.post[data-post-id], .hot-item[data-post-id], [data-like], .story-save-btn, #storyComposer, #profComposer, [data-empty-action], #fab, #alertsBtn, #searchBtn, [data-page="my"], [data-page="timer"], [data-page="schedule"], [data-lvote], [data-ladd], [data-ldel], [data-rv-send]';
+  var GUEST_LOCKED = '.post[data-post-id], .hot-item[data-post-id], [data-like], .story-save-btn, #storyComposer, #profComposer, [data-empty-action], #fab, #alertsBtn, #searchBtn, [data-page="my"], [data-page="timer"], [data-page="schedule"], [data-lvote], [data-ladd], [data-ldel], [data-rv-send], [data-home-tool="schedule"], [data-home-tool="timer"]';
   document.addEventListener('click', function (e) {
     if (!Store.guest || document.getElementById('appRoot').hidden) return;
     const auth = e.target.closest('[data-guest-auth]');
@@ -2744,7 +2837,7 @@
     const h = lastHash || '#home';
     if (location.hash !== h) location.hash = h; else { const hp = hashPage(); goPage(hp.name, hp.extra); }
   };
-  document.getElementById('asideShareBtn').onclick = openStoryModal;
+  const asideShare = document.getElementById('asideShareBtn'); if (asideShare) asideShare.onclick = openStoryModal;
 
   document.getElementById('fab').onclick = function () {
     const name = hashPage().name;
@@ -2770,8 +2863,8 @@
     if (toolCw) { activeBoard = 'coursework'; navTo('board', 'coursework'); return; }
     const toolPg = e.target.closest('.tool-card[data-page]');
     if (toolPg) { navTo(toolPg.dataset.page); return; }
-    const cat = e.target.closest('.board-cat[data-board]');
-    if (cat) { activeBoard = cat.dataset.board; navTo('board', cat.dataset.board); return; }
+    const cat = e.target.closest('.board-cat[data-board], .hchip[data-board], .htool[data-board], .section-head a[data-board]');
+    if (cat) { e.preventDefault(); activeBoard = cat.dataset.board; navTo('board', cat.dataset.board); return; }
     const go = e.target.closest('[data-go]');
     if (go) { navTo(go.dataset.go); return; }
     const empty = e.target.closest('[data-empty-action]');
@@ -3127,6 +3220,12 @@
     const board = document.getElementById('modalBoard').value;
     const title = document.getElementById('modalTitleInput').value.trim();
     const body = keepIndent(document.getElementById('modalBody').value);
+    if (!board) {
+      const sel = document.getElementById('modalBoard');
+      sel.classList.add('need'); sel.focus();
+      setTimeout(function () { sel.classList.remove('need'); }, 1600);
+      return;
+    }
     if (!title) { document.getElementById('modalTitleInput').focus(); return; }
     if (editingPostId != null) {
       const ur = await Store.updatePost(editingPostId, { board: board, title: title, body: body || '(no description)' });

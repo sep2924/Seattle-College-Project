@@ -84,13 +84,8 @@
   </main>
 
   <aside class="desktop-aside">
-    <div class="aside-card aside-cta">
-      <h4>Share your transfer story</h4>
-      <p>Help future transfers by sharing your GPA, route, and what worked for your application.</p>
-      <button class="btn btn-primary" id="asideShareBtn" type="button" style="background:var(--mint);">Write a story</button>
-    </div>
     <div class="aside-card">
-      <h4>Recent Transfer Stories</h4>
+      <h4 id="asideStoriesH">How it works</h4>
       <div id="asideStories"></div>
     </div>
     <div class="aside-card">
@@ -213,6 +208,7 @@
     <h3 id="modalTitle">New post</h3>
     <label for="modalBoard">Board</label>
     <select id="modalBoard">
+      <option value="" disabled>Pick a board</option>
       <option value="free">Free Talk</option>
       <option value="transfer">Transfer Q&A</option>
       <option value="courseplan">Course Plan Q&A</option>
