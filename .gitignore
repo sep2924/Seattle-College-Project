@@ -1,0 +1,13 @@
+# Mac system files
+.DS_Store
+
+# Marketing files kept in the top folder (posters, cards, screenshots)
+/*.pdf
+/*.png
+/*.jpg
+/Screenshot*
+
+# Editor and tool folders
+.vscode/
+.idea/
+node_modules/

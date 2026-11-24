@@ -2745,6 +2745,14 @@
 
   async function boot() {
     await Store.init();
+    // A small reminder strip while testing on your own computer with demo data.
+    if (Store.isLocalDev && Store.isLocalDev()) {
+      const strip = document.createElement('div');
+      strip.className = 'dev-strip';
+      strip.setAttribute('role', 'status');
+      strip.textContent = 'Demo mode on your computer: fake data, nothing reaches the real site.';
+      document.body.appendChild(strip);
+    }
     window.addEventListener('pagehide', function () { Store.flushPrivate(); });
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') Store.flushPrivate(); });
     try { localStorage.setItem('scc_onboard_done', '1'); } catch (e) {}

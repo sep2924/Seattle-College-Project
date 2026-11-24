@@ -201,7 +201,25 @@
     privateMap: {},
 
     supabaseEnabled: function () {
+      if (this.isLocalDev()) return false;
       return !!(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey && global.supabase);
+    },
+
+    // On your own computer (localhost, 127.0.0.1, or an opened file) the site uses demo data,
+    // so testing never touches the real database. Add ?live=1 to the address to use the real
+    // database locally on purpose, and ?live=0 to go back to demo data.
+    isLocalDev: function () {
+      const loc = global.location || {};
+      const host = String(loc.hostname || '');
+      const local = loc.protocol === 'file:' || host === 'localhost' || host === '127.0.0.1' ||
+        host === '0.0.0.0' || host === '[::1]' || host === '::1' || /\.local$/.test(host);
+      if (!local) return false;
+      try {
+        const q = new URLSearchParams(loc.search || '');
+        if (q.get('live') === '1') global.localStorage.setItem('scc-use-live', '1');
+        if (q.get('live') === '0') global.localStorage.removeItem('scc-use-live');
+        return global.localStorage.getItem('scc-use-live') !== '1';
+      } catch (e) { return true; }
     },
 
     init: async function () {
